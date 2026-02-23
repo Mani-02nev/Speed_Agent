@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+    /* Global White Palette */
+    --app-bg: #FFFFFF;
+    --sidebar-bg: #F8FAFC;
+    --panel-bg: #FFFFFF;
+    --editor-bg: #0F1115;
+    /* Reserved for IDE */
+    --border-color: #E2E8F0;
+    --border-light: rgba(0, 0, 0, 0.05);
+
+    /* Accents */
+    --accent-primary: #00E0B8;
+    --accent-secondary: #2563EB;
+    --accent-glow: rgba(0, 224, 184, 0.1);
+
+    /* Status Colors */
+    --error: #EF4444;
+    --warning: #F59E0B;
+    --success: #10B981;
+
+    /* Text System */
+    --text-primary: #0F172A;
+    --text-secondary: #64748B;
+    --text-muted: #94A3B8;
+
+    /* Spacing */
+    --space-unit: 8px;
+}
+
+@theme {
+    --color-app-bg: var(--app-bg);
+    --color-sidebar-bg: var(--sidebar-bg);
+    --color-panel-bg: var(--panel-bg);
+    --color-editor-bg: var(--editor-bg);
+    --color-accent-primary: var(--accent-primary);
+    --color-accent-secondary: var(--accent-secondary);
+}
+
+@layer base {
+    body {
+        @apply bg-[var(--app-bg)] text-[var(--text-primary)] antialiased;
+        font-family: 'Inter', sans-serif;
+    }
+
+    ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+        @apply bg-transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        @apply bg-slate-200 rounded-full hover:bg-slate-300 transition-all;
+    }
+}
+
+@layer components {
+    .panel-border {
+        @apply border border-[var(--border-color)];
+    }
+
+    .glass-panel {
+        @apply bg-[var(--panel-bg)] border border-[var(--border-light)] shadow-2xl;
+    }
+
+    .mono-text {
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    .btn-primary {
+        @apply bg-[var(--accent-primary)] text-black font-black uppercase tracking-widest text-[11px] px-4 py-2 rounded-md hover:brightness-110 active:scale-95 transition-all shadow-[0_0_20px_var(--accent-glow)];
+    }
+
+    .icon-btn {
+        @apply p-2 rounded-lg hover:bg-white/5 text-[var(--text-secondary)] hover:text-white transition-all;
+    }
+}
+
+.speed-transition {
+    transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.shimmer {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.03), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+/* 🚀 Agent Streaming Decorations */
+.ai-contribution-highlight {
+    background-color: rgba(0, 224, 184, 0.05);
+    animation: pulse-border 1.5s ease-out forwards;
+}
+
+.ai-contribution-gutter {
+    border-left: 2px solid var(--accent-primary);
+    box-shadow: 2px 0 10px rgba(0, 224, 184, 0.2);
+}
+
+@keyframes pulse-border {
+    from {
+        background-color: rgba(0, 224, 184, 0.1);
+    }
+
+    to {
+        background-color: transparent;
+    }
+}
+
+/* Monaco Custom Fixes */
+.monaco-editor,
+.monaco-editor .margin,
+.monaco-editor-background {
+    background-color: transparent !important;
+}
+
+/* Scrollbar Utility for components that use custom-scrollbar */
+.custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
