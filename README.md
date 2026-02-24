@@ -1,4 +1,4 @@
-# ⚡ Speed Agent
+# ⚡ Agent K
 
 Enterprise-ready AI coding & automation platform. Clean, minimal, and scalable.
 
@@ -56,7 +56,7 @@ npm run dev
 3.  Deploy!
 
 ## 🧪 AI Command Instructions
-To have Speed Agent create or modify a file, use the following format in the chat:
+To have Agent K create or modify a file, use the following format in the chat:
 ```jsx
 // filename: src/components/App.jsx
 import React from 'react';

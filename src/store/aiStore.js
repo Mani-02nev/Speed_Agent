@@ -14,6 +14,12 @@ export const useAIStore = create((set, get) => ({
     setPendingPatches: (patches) => set({ pendingPatches: patches }),
     clearPendingPatches: () => set({ pendingPatches: [] }),
 
+    agentMode: 'plan', // 'plan' or 'execute'
+    setAgentMode: (mode) => set({ agentMode: mode }),
+
+    autoExecute: false,
+    setAutoExecute: (auto) => set({ autoExecute: auto }),
+
     setProvider: (provider) => {
         const defaultModels = {
             openai: 'gpt-4o',
@@ -49,10 +55,17 @@ export const useAIStore = create((set, get) => ({
     },
 
     clearMessages: () => set({ messages: [] }),
+    deleteMessages: async (projectId) => {
+        const { error } = await supabase.from('messages').delete().eq('project_id', projectId);
+        if (error) console.error('Error deleting messages:', error);
+        else set({ messages: [] });
+    },
     resetAI: () => set({
         messages: [],
         pendingPatches: [],
         loading: false,
-        isTyping: false
+        isTyping: false,
+        agentMode: 'plan',
+        autoExecute: false
     }),
 }));

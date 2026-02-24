@@ -14,7 +14,7 @@ const Footer = () => {
                             <div className="w-8 h-8 rounded flex items-center justify-center overflow-hidden">
                                 <img src="/logo.png" className="w-full h-full object-contain" alt="" />
                             </div>
-                            <span className="text-xl font-black uppercase tracking-tighter text-[#0F172A]">Speed Agent IDE</span>
+                            <span className="text-xl font-black uppercase tracking-tighter text-[#0F172A]">Agent K</span>
                         </div>
                         <p className="text-[#64748B] text-sm font-medium leading-relaxed max-w-xs">
                             The enterprise-grade AI IDE for professional developers who value precision, speed, and security.
@@ -58,7 +58,7 @@ const Footer = () => {
                 </div>
 
                 <div className="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-slate-100 text-[11px] font-black uppercase tracking-widest text-[#94A3B8]">
-                    <span>© 2026 Speed Agent IDE. All Node Streams Active.</span>
+                    <span>© 2026 Agent K. All Node Streams Active.</span>
                     <div className="flex gap-8 mt-4 md:mt-0">
                         <a href="#" className="hover:text-[#64748B]">Status</a>
                         <a href="#" className="hover:text-[#64748B]">API</a>

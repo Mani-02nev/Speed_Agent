@@ -24,7 +24,7 @@ const App = () => {
             <div className="h-screen w-screen flex items-center justify-center bg-white text-[#0F172A]">
                 <div className="flex flex-col items-center gap-4">
                     <div className="w-12 h-12 border-4 border-[#00E0B8] border-t-transparent rounded-full animate-spin" />
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Synchronizing Speed...</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Initializing Agent K...</span>
                 </div>
             </div>
         );

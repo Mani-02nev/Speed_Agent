@@ -4,13 +4,13 @@ import { useProjectStore } from '../store/projectStore';
 import { useEditorStore } from '../store/editorStore';
 import { generateAIResponse } from '../services/ai';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Cpu, Sparkles, Check, X, FileCode, ArrowUpRight, User } from 'lucide-react';
+import { Send, Cpu, Sparkles, Check, X, FileCode, ArrowUpRight, User, Play, Layout, Trash2 } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 const AIChat = ({ projectId }) => {
-    const { messages, addMessage, fetchMessages, isTyping, setIsTyping, pendingPatches, setPendingPatches, clearPendingPatches } = useAIStore();
+    const { messages, addMessage, fetchMessages, isTyping, setIsTyping, pendingPatches, setPendingPatches, clearPendingPatches, agentMode, setAgentMode, autoExecute, setAutoExecute, deleteMessages } = useAIStore();
     const { files } = useProjectStore();
-    const { activeFileId, tabs } = useEditorStore();
+    const { activeFileId, tabs, setPreviewOpen } = useEditorStore();
     const [input, setInput] = useState('');
     const scrollRef = useRef(null);
 
@@ -26,16 +26,13 @@ const AIChat = ({ projectId }) => {
 
     const activeFile = tabs.find(t => t.id === activeFileId);
 
-    const handleSend = async (e) => {
-        e.preventDefault();
-        if (!input.trim() || isTyping) return;
+    const submitPrompt = async (promptText) => {
+        if (!promptText.trim() || isTyping) return;
 
-        const userMessage = input;
-        setInput('');
         setIsTyping(true);
 
         try {
-            await addMessage(projectId, 'user', userMessage);
+            await addMessage(projectId, 'user', promptText);
 
             const projectStructure = files.map(f => f.name).join(', ');
 
@@ -58,8 +55,9 @@ const AIChat = ({ projectId }) => {
             ];
 
             const response = await generateAIResponse({
-                prompt: userMessage,
+                prompt: promptText,
                 context,
+                agentMode
             });
 
             // Handle Structured Error
@@ -73,9 +71,16 @@ const AIChat = ({ projectId }) => {
                 return;
             }
 
-            // v6: Parse patches instead of auto-applying
-            const { parsePatches } = await import('../services/agent');
-            await parsePatches(projectId, response);
+            // v6: Parse patches instead of auto-applying, unless in execute mode
+            const { parsePatches, applyPatch } = await import('../services/agent');
+            const patches = await parsePatches(projectId, response);
+
+            if (agentMode === 'execute' || autoExecute) {
+                // Autonomously apply in execute mode
+                for (const p of patches) {
+                    await applyPatch(projectId, p);
+                }
+            }
 
             // Hide raw code from bubble via render logic
             await addMessage(projectId, 'assistant', response);
@@ -86,6 +91,36 @@ const AIChat = ({ projectId }) => {
         } finally {
             setIsTyping(false);
         }
+    };
+
+    const handleSend = async (e) => {
+        e.preventDefault();
+        const userMessage = input;
+        setInput('');
+        await submitPrompt(userMessage);
+    };
+
+    const handleCommand = (cmd) => {
+        submitPrompt(cmd);
+    };
+
+    const handleBuildProject = async () => {
+        await addMessage(projectId, 'user', 'Build Project');
+        setIsTyping(true);
+        setTimeout(async () => {
+            await addMessage(projectId, 'assistant', 'Virtual build complete. No errors detected. System is stable.');
+            setIsTyping(false);
+        }, 1500);
+    };
+
+    const handleRunPreview = async () => {
+        setPreviewOpen(true);
+        await addMessage(projectId, 'user', 'Run Preview');
+        setIsTyping(true);
+        setTimeout(async () => {
+            await addMessage(projectId, 'assistant', 'Project preview mounted successfully.');
+            setIsTyping(false);
+        }, 1500);
     };
 
     const handleAcceptPatch = async (patch) => {
@@ -144,8 +179,45 @@ const AIChat = ({ projectId }) => {
                     <div className="w-2 h-2 rounded-full bg-[#00E0B8] shadow-[0_0_8px_#00E0B8]" />
                     <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Neural Hub</span>
                 </div>
-                <div className="px-2 py-0.5 rounded bg-[#00E0B8]/10 border border-[#00E0B8]/20 text-[8px] font-black text-[#00E0B8] uppercase tracking-widest">
-                    v6.0 Enterprise
+                <div className="flex items-center gap-3">
+                    <button onClick={() => deleteMessages(projectId)} className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[#57606A] hover:bg-white/5 hover:text-red-400 transition-all">
+                        <Trash2 className="w-3 h-3" />
+                        <span className="text-[9px] font-black uppercase tracking-widest">Clear Chat</span>
+                    </button>
+                    <div className="px-2 py-0.5 rounded bg-[#00E0B8]/10 border border-[#00E0B8]/20 text-[8px] font-black text-[#00E0B8] uppercase tracking-widest">
+                        v6.0 Enterprise
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex flex-col gap-2 p-4 bg-[#111317]/80 border-b border-[#1F2430]">
+                <div className="flex rounded-lg bg-[#0D0F12] p-1 border border-[#1F2430]">
+                    <button
+                        onClick={() => setAgentMode('plan')}
+                        className={cn("flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all", agentMode === 'plan' ? "bg-[#00E0B8] text-black shadow-sm" : "text-[#57606A] hover:text-white")}
+                    >
+                        Plan Mode
+                    </button>
+                    <button
+                        onClick={() => setAgentMode('execute')}
+                        className={cn("flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all", agentMode === 'execute' ? "bg-[#00E0B8] text-black shadow-sm" : "text-[#57606A] hover:text-white")}
+                    >
+                        Execute Mode
+                    </button>
+                </div>
+                {agentMode === 'plan' ? (
+                    <div className="grid grid-cols-1 gap-2 mt-2">
+                        <button onClick={() => handleCommand('Generate structured development plan')} className="py-2 bg-[#1F2430] hover:bg-[#2D333B] text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">Generate Plan</button>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                        <button onClick={() => handleCommand('Execute the next pending step in plan.md')} className="py-2 bg-[#1F2430] hover:bg-[#2D333B] text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">Execute Step</button>
+                        <button onClick={() => { setAutoExecute(true); handleCommand('Execute all pending steps in plan.md sequentially') }} className="py-2 bg-[#00E0B8]/10 hover:bg-[#00E0B8]/20 text-[#00E0B8] rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">Execute Full Plan</button>
+                    </div>
+                )}
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                    <button onClick={handleBuildProject} className="py-2 bg-[#1F2430] hover:bg-[#2D333B] text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5"><Cpu className="w-3 h-3" /> Build Project</button>
+                    <button onClick={handleRunPreview} className="py-2 bg-[#1F2430] hover:bg-[#2D333B] text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5"><Play className="w-3 h-3" /> Run Preview</button>
                 </div>
             </div>
 

@@ -22,9 +22,9 @@ const Navbar = () => {
             <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
                 <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
                     <div className="w-9 h-9 bg-white/5 rounded-lg flex items-center justify-center shadow-lg border border-slate-200/20 overflow-hidden">
-                        <img src="/logo.png" className="w-7 h-7 object-contain" alt="Speed Agent IDE" />
+                        <img src="/logo.png" className="w-7 h-7 object-contain" alt="Agent K" />
                     </div>
-                    <span className="text-xl font-black uppercase tracking-tighter text-[#0F172A]">Speed Agent IDE</span>
+                    <span className="text-xl font-black uppercase tracking-tighter text-[#0F172A]">Agent K</span>
                 </div>
 
                 <div className="hidden md:flex items-center gap-8 text-[13px] font-bold text-[#64748B] uppercase tracking-widest">

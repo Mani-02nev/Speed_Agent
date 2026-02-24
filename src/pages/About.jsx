@@ -17,7 +17,7 @@ const About = () => {
                         <h1 className="text-xl font-black uppercase tracking-tighter text-[#0F172A]">Project Metadata</h1>
                     </div>
                     <div className="flex items-center gap-4">
-                        <img src="/logo.png" className="h-8 w-auto grayscale opacity-50" alt="Speed Agent" />
+                        <img src="/logo.png" className="h-8 w-auto grayscale opacity-50" alt="Agent K" />
                         <img src="/company-logo.png" className="h-6 w-auto grayscale opacity-50" alt="Tech Stach" />
                     </div>
                 </div>
@@ -48,7 +48,7 @@ const About = () => {
                             <div className="space-y-4">
                                 <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-[#64748B]">Architectural Context</h3>
                                 <p className="text-[#475569] text-xl font-medium leading-relaxed">
-                                    Speed Agent IDE represents the pinnacle of AI-native engineering environments,
+                                    Agent K is an enterprise AI-powered development environment
                                     built to eliminate setup friction and maximize cognitive flow.
                                 </p>
                             </div>
@@ -99,9 +99,9 @@ const About = () => {
 
                     <div className="mt-20 pt-10 border-t border-slate-100 flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                            <img src="/logo.png" className="h-10 w-auto" alt="Speed Agent" />
+                            <img src="/logo.png" className="h-10 w-auto" alt="Agent K" />
                             <div className="h-6 w-[1px] bg-slate-200 mx-2" />
-                            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-[#0F172A]">Speed Agent IDE v1.0 Production</span>
+                            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-[#0F172A]">Agent K v1.0 Production</span>
                         </div>
                         <p className="text-[9px] font-bold text-[#94A3B8] tracking-widest uppercase italic">Engineered with precision for deployments.</p>
                     </div>

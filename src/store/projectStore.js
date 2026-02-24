@@ -6,6 +6,9 @@ export const useProjectStore = create((set, get) => ({
     currentProject: null,
     files: [],
     loading: false,
+    previewRootPath: '',
+
+    setPreviewRootPath: (path) => set({ previewRootPath: path }),
 
     fetchProjects: async () => {
         set({ loading: true });

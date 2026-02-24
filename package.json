@@ -1,5 +1,5 @@
 {
-  "name": "agent_speed",
+  "name": "agent_k",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -14,6 +14,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@codesandbox/sandpack-react": "^2.20.0",
     "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -21,6 +22,8 @@
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
     "@supabase/supabase-js": "^2.97.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",
@@ -31,6 +34,7 @@
     "lucide-react": "^0.575.0",
     "react-router-dom": "^7.13.0",
     "tailwind-merge": "^3.5.0",
+    "three": "^0.183.1",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

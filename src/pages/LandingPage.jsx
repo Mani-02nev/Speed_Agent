@@ -40,7 +40,7 @@ const LandingPage = () => {
                         onClick={() => navigate('/login')}
                         className="px-10 py-5 bg-[#00E0B8] text-black rounded-xl text-sm font-black uppercase tracking-widest hover:brightness-110 shadow-2xl shadow-[#00E0B8]/20 relative z-10 transition-all flex items-center gap-2 mx-auto"
                     >
-                        Launch Speed Agent <ArrowRight className="w-5 h-5" />
+                        Launch Agent K <ArrowRight className="w-5 h-5" />
                     </button>
                 </motion.div>
             </section>

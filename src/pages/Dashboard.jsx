@@ -48,7 +48,7 @@ const Dashboard = () => {
             const defaults = [
                 { name: 'index.html', content: `<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n    <title>${projectName}</title>\n    <link rel="stylesheet" href="style.css">\n</head>\n<body>\n    <div id="app">\n        <h1>${projectName}</h1>\n        <p>Neural engine active. Start builds below.</p>\n    </div>\n    <script src="main.js"></script>\n</body>\n</html>`, lang: 'html' },
                 { name: 'style.css', content: `body {\n    font-family: 'Inter', sans-serif;\n    background: #0F172A;\n    color: white;\n    display: flex;\n    align-items: center;\n    justify-content: center;\n    height: 100vh;\n    margin: 0;\n}\n\n#app {\n    text-align: center;\n    padding: 2rem;\n    border: 1px solid rgba(255,255,255,0.1);\n    border-radius: 2rem;\n    background: rgba(255,255,255,0.02);\n}`, lang: 'css' },
-                { name: 'main.js', content: `console.log('Speed Agent Node initialized for ${projectName}');\n\nconst app = document.getElementById('app');\n// Neural expansion logic here`, lang: 'javascript' }
+                { name: 'main.js', content: `console.log('Agent K Node initialized for ${projectName}');\n\nconst app = document.getElementById('app');\n// Neural expansion logic here`, lang: 'javascript' }
             ];
 
             for (const file of defaults) {
@@ -86,7 +86,7 @@ const Dashboard = () => {
                         <img src="/logo.png" className="w-6 h-6 object-contain brightness-0 invert" alt="" />
                     </div>
                     <div className="flex flex-col">
-                        <span className="font-black text-[13px] uppercase tracking-tighter text-[#0F172A]">Speed Agent IDE</span>
+                        <span className="font-black text-[13px] uppercase tracking-tighter text-[#0F172A]">Agent K</span>
                         <span className="text-[9px] font-bold text-[#64748B] uppercase tracking-widest leading-none">Enterprise Production</span>
                     </div>
                 </div>
@@ -234,7 +234,7 @@ const Dashboard = () => {
                                 <div className="p-24 bg-white border border-[#E2E8F0] rounded-[48px] text-center shadow-sm relative overflow-hidden">
                                     <div className="absolute inset-0 bg-gradient-to-b from-[#00E0B8]/5 to-transparent pointer-events-none" />
                                     <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-2xl border border-slate-100">
-                                        <img src="/logo.png" className="w-12 h-12 object-contain" alt="Speed Agent" />
+                                        <img src="/logo.png" className="w-12 h-12 object-contain" alt="Agent K" />
                                     </div>
                                     <h3 className="text-2xl font-black text-[#0F172A] tracking-tighter uppercase mb-4">Awaiting Core Architecture</h3>
                                     <p className="text-[#64748B] text-lg font-medium mb-10 max-w-sm mx-auto leading-relaxed">System is idle. Deploy your first neural node to begin architectural expansion.</p>

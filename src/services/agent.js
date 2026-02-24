@@ -3,7 +3,7 @@ import { useEditorStore } from '../store/editorStore';
 import { useAIStore } from '../store/aiStore';
 
 /**
- * Speed Agent Core v6 - Enterprise Patch Engine
+ * Agent K Core v6 - Enterprise Patch Engine
  */
 
 export const parsePatches = async (projectId, fullResponseText) => {
@@ -85,45 +85,68 @@ export const applyPatch = async (projectId, patch) => {
             model = monaco.editor.createModel('', file.language, uri);
         }
 
-        if (model) {
-            if (editor.getModel() !== model) editor.setModel(model);
+        try {
+            if (model && !model.isDisposed()) {
+                // We no longer blindly call editor.setModel() synchronously because 
+                // the DOM instance may be mid-unmount. The ProjectEditor.jsx `useEffect` handles it.
 
-            // Rule 13: Live Typing Mode
-            const fullText = patch.newContent;
-            const chunkSize = 150; // High performance speed
+                // Rule 13: Live Typing Mode
+                const fullText = patch.newContent;
+                const chunkSize = 150; // High performance speed
 
-            for (let i = 0; i <= fullText.length; i += chunkSize) {
-                const chunk = fullText.slice(0, i);
-                model.pushEditOperations(
-                    [],
-                    [{ range: model.getFullModelRange(), text: chunk }],
-                    () => null
-                );
-                projectStore.setStreamingContent(file.id, chunk);
-                await new Promise(r => setTimeout(r, 16));
-            }
+                for (let i = 0; i <= fullText.length; i += chunkSize) {
+                    if (model.isDisposed()) break; // Break if model destroyed, don't break if editor is null
 
-            // Final Snap
-            model.pushEditOperations(
-                [],
-                [{ range: model.getFullModelRange(), text: fullText }],
-                () => null
-            );
-
-            // Rule 10: Cursor at line 1
-            editor.setPosition({ lineNumber: 1, column: 1 });
-            editor.revealLine(1);
-
-            // Decoration Rule: Highlight
-            const decorations = editor.deltaDecorations([], [{
-                range: new monaco.Range(1, 1, model.getLineCount(), 1),
-                options: {
-                    isWholeLine: true,
-                    className: 'ai-contribution-highlight',
-                    linesDecorationsClassName: 'ai-contribution-gutter'
+                    const chunk = fullText.slice(0, i);
+                    model.pushEditOperations(
+                        [],
+                        [{ range: model.getFullModelRange(), text: chunk }],
+                        () => null
+                    );
+                    projectStore.setStreamingContent(file.id, chunk);
+                    await new Promise(r => setTimeout(r, 16));
                 }
-            }]);
-            setTimeout(() => editor.deltaDecorations(decorations, []), 1500);
+
+                if (!model.isDisposed()) {
+                    // Final Snap
+                    model.pushEditOperations(
+                        [],
+                        [{ range: model.getFullModelRange(), text: fullText }],
+                        () => null
+                    );
+
+                    // Re-acquire editor dynamically just in case React just mounted it
+                    const currentEditor = useEditorStore.getState().editorInstance;
+
+                    if (currentEditor && currentEditor.getModel() === model) {
+                        try {
+                            currentEditor.setPosition({ lineNumber: 1, column: 1 });
+                            currentEditor.revealLineInCenterIfOutsideViewport(1);
+
+                            // Decoration Rule: Highlight
+                            const decorations = currentEditor.deltaDecorations([], [{
+                                range: new monaco.Range(1, 1, model.getLineCount(), 1),
+                                options: {
+                                    isWholeLine: true,
+                                    className: 'ai-contribution-highlight',
+                                    linesDecorationsClassName: 'ai-contribution-gutter'
+                                }
+                            }]);
+
+                            setTimeout(() => {
+                                try {
+                                    const latestEditor = useEditorStore.getState().editorInstance;
+                                    if (latestEditor && latestEditor.getModel() === model && !model.isDisposed()) {
+                                        latestEditor.deltaDecorations(decorations, []);
+                                    }
+                                } catch (e) { }
+                            }, 1500);
+                        } catch (e) { console.warn("Decoration suppressed due to lifecycle.") }
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn("Neural Node Transition: Deferred model binding due to lifecycle state.", error);
         }
     }
 

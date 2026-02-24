@@ -37,7 +37,7 @@ const Hero = () => {
                         transition={{ delay: 0.2 }}
                         className="mt-8 text-xl text-[#64748B] max-w-2xl font-medium leading-relaxed"
                     >
-                        Speed Agent IDE is an enterprise AI-powered development environment with live patch control, multi-file intelligence, and integrated terminal execution.
+                        Agent K is an enterprise AI-powered development environment with live patch control, multi-file intelligence, and integrated terminal execution.
                     </motion.p>
 
                     <motion.div

@@ -9,6 +9,10 @@ export const useEditorStore = create((set) => ({
     editorInstance: null,
     monacoInstance: null,
 
+    isPreviewOpen: false,
+    togglePreview: () => set((state) => ({ isPreviewOpen: !state.isPreviewOpen })),
+    setPreviewOpen: (isOpen) => set({ isPreviewOpen: isOpen }),
+
     setEditorInstance: (instance) => set({ editorInstance: instance }),
     setMonacoInstance: (instance) => set({ monacoInstance: instance }),
 
@@ -55,5 +59,6 @@ export const useEditorStore = create((set) => ({
         openFiles: [],
         tabs: [],
         dirtyFiles: [],
+        isPreviewOpen: false,
     }),
 }));

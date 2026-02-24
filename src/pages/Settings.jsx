@@ -157,7 +157,7 @@ const Settings = () => {
                                 <img src="/logo.png" className="w-10 h-10 object-contain" alt="" />
                             </div>
                             <div className="text-left">
-                                <h3 className="text-lg font-black text-[#0F172A] uppercase tracking-tighter">About Speed Agent</h3>
+                                <h3 className="text-lg font-black text-[#0F172A] uppercase tracking-tighter">About Agent K</h3>
                                 <p className="text-[#64748B] text-xs font-semibold uppercase tracking-widest mt-1">v1.0 Production | Tech Stach Core</p>
                             </div>
                         </div>
@@ -172,7 +172,7 @@ const Settings = () => {
                     >
                         <LogOut className="w-4 h-4" /> Disconnect Node
                     </button>
-                    <p className="text-[9px] font-bold text-[#94A3B8] mt-6 tracking-[0.4em] uppercase">Speed Agent Enterprise v6.0.42_STABLE</p>
+                    <p className="text-[9px] font-bold text-[#94A3B8] mt-6 tracking-[0.4em] uppercase">Agent K Enterprise v6.0.42_STABLE</p>
                 </div>
             </main>
         </div>
