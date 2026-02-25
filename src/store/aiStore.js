@@ -38,18 +38,33 @@ export const useAIStore = create((set, get) => ({
             .eq('project_id', projectId)
             .order('created_at', { ascending: true });
 
-        if (error) console.error('Error fetching messages:', error);
-        else set({ messages: data || [] });
+        if (error) {
+            if (error.status === 403 || error.code === '42501') {
+                console.warn('[SUPABASE RLS] Message Fetch Denied: Ensure you are the owner of project node ' + projectId);
+                const { data: user } = await supabase.auth.getUser();
+                console.log('[DIAGNOSTIC] Current Auth UID:', user?.user?.id || 'NULL');
+            } else {
+                console.error('Error fetching messages:', error);
+            }
+        } else {
+            set({ messages: data || [] });
+        }
     },
 
     addMessage: async (projectId, role, content) => {
+        const { data: { user } } = await supabase.auth.getUser();
+        console.log(`[DEBUG] Adding message to node: ${projectId} | As: ${user?.id || 'ANON'}`);
+
         const { data, error } = await supabase
             .from('messages')
             .insert({ project_id: projectId, role, content })
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            console.error(`[CRITICAL] Message insertion failed for node ${projectId}:`, error);
+            throw error;
+        }
         set({ messages: [...get().messages, data] });
         return data;
     },

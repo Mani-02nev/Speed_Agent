@@ -48,8 +48,15 @@ export const useProjectStore = create((set, get) => ({
             .eq('project_id', projectId)
             .order('updated_at', { ascending: false });
 
-        if (error) console.error('Error fetching files:', error);
-        else set({ files: data || [] });
+        if (error) {
+            if (error.status === 403 || error.code === '42501') {
+                console.warn('[SUPABASE RLS] Files Fetch Denied for project: ' + projectId);
+            } else {
+                console.error('Error fetching files:', error);
+            }
+        } else {
+            set({ files: data || [] });
+        }
     },
 
     createFile: async (projectId, name, content = '', language = 'javascript') => {
@@ -59,7 +66,13 @@ export const useProjectStore = create((set, get) => ({
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            if (error.status === 403 || error.code === '42501') {
+                console.error('[SUPABASE RLS] File Creation Denied. Ownership conflict?');
+                throw new Error("Permission Denied: You do not own this project node.");
+            }
+            throw error;
+        }
         set({ files: [data, ...get().files] });
         return data;
     },

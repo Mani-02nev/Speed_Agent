@@ -87,40 +87,76 @@ const AIChat = ({ projectId }) => {
 
         } catch (error) {
             console.error("Neural Node Failure:", error);
-            await addMessage(projectId, 'assistant', "Node connection loss. Initializing recovery...");
+            // If it's a Supabase RLS error (403), don't try to add another message as it will fail too
+            if (error && (error.status === 403 || error.code === '42501')) {
+                console.error("[CRITICAL RLS] Permission denied. Ensure project node matches user identity.");
+                return;
+            }
+            try {
+                await addMessage(projectId, 'assistant', "Node connection loss. Initializing recovery...");
+            } catch (recoveryError) {
+                console.error("Recovery failed:", recoveryError);
+            }
         } finally {
             setIsTyping(false);
         }
     };
 
     const handleSend = async (e) => {
-        e.preventDefault();
+        if (e) e.preventDefault();
         const userMessage = input;
+        if (!userMessage.trim()) return;
         setInput('');
-        await submitPrompt(userMessage);
+        try {
+            await submitPrompt(userMessage);
+        } catch (err) {
+            console.error("Submission failed:", err);
+        }
     };
 
-    const handleCommand = (cmd) => {
-        submitPrompt(cmd);
+    const handleCommand = async (cmd) => {
+        try {
+            await submitPrompt(cmd);
+        } catch (err) {
+            console.error("Command execution failed:", err);
+        }
     };
 
     const handleBuildProject = async () => {
-        await addMessage(projectId, 'user', 'Build Project');
-        setIsTyping(true);
-        setTimeout(async () => {
-            await addMessage(projectId, 'assistant', 'Virtual build complete. No errors detected. System is stable.');
-            setIsTyping(false);
-        }, 1500);
+        try {
+            await addMessage(projectId, 'user', 'Build Project');
+            setIsTyping(true);
+            setTimeout(async () => {
+                try {
+                    await addMessage(projectId, 'assistant', 'Virtual build complete. No errors detected. System is stable.');
+                } catch (err) {
+                    console.error("Build status message failed:", err);
+                } finally {
+                    setIsTyping(false);
+                }
+            }, 1500);
+        } catch (err) {
+            console.error("Build initiation failed:", err);
+        }
     };
 
     const handleRunPreview = async () => {
-        setPreviewOpen(true);
-        await addMessage(projectId, 'user', 'Run Preview');
-        setIsTyping(true);
-        setTimeout(async () => {
-            await addMessage(projectId, 'assistant', 'Project preview mounted successfully.');
-            setIsTyping(false);
-        }, 1500);
+        try {
+            setPreviewOpen(true);
+            await addMessage(projectId, 'user', 'Run Preview');
+            setIsTyping(true);
+            setTimeout(async () => {
+                try {
+                    await addMessage(projectId, 'assistant', 'Project preview mounted successfully.');
+                } catch (err) {
+                    console.error("Preview status message failed:", err);
+                } finally {
+                    setIsTyping(false);
+                }
+            }, 1500);
+        } catch (err) {
+            console.error("Preview initiation failed:", err);
+        }
     };
 
     const handleAcceptPatch = async (patch) => {

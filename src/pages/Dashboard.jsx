@@ -26,7 +26,7 @@ const Dashboard = () => {
         const checkUser = async () => {
             await init();
             if (!user) {
-                const session = JSON.parse(localStorage.getItem('sb-token'));
+                const session = JSON.parse(localStorage.getItem('agent-speed-auth'));
                 if (!session) navigate('/login');
             }
         };

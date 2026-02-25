@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useProjectStore } from '../store/projectStore';
 import { useEditorStore } from '../store/editorStore';
-import { File, Folder, Plus, Search, MoreVertical, Globe, Code2, Palette, Box, Trash2, Play } from 'lucide-react';
+import { File, Folder, Plus, Search, MoreVertical, Globe, Code2, Palette, Box, Trash2, Play, Copy, ExternalLink, ChevronRight } from 'lucide-react';
 import { cn } from '../utils/cn';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const getFileIcon = (fileName) => {
     if (!fileName) return <File className="w-3.5 h-3.5 text-[#9DA5B4]" />;
@@ -18,8 +18,8 @@ const getFileIcon = (fileName) => {
     }
 };
 
-const TreeNode = ({ node, level = 0, openFile, activeFileId, handleDeleteFile, handleDeleteFolder, handleRunFolder, previewRootPath }) => {
-    const [isOpen, setIsOpen] = useState(true);
+const TreeNode = ({ node, level = 0, openFile, activeFileId, handleDeleteFile, handleDeleteFolder, handleRunFolder, previewRootPath, onContextMenu }) => {
+    const [isOpen, setIsOpen] = React.useState(true);
 
     if (!node.isFolder) {
         return (
@@ -27,6 +27,7 @@ const TreeNode = ({ node, level = 0, openFile, activeFileId, handleDeleteFile, h
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 onClick={() => openFile(node)}
+                onContextMenu={(e) => onContextMenu(e, node)}
                 style={{ paddingLeft: `${level * 16 + 12}px` }}
                 className={cn(
                     "flex items-center gap-2.5 py-1.5 pr-3 cursor-pointer group relative speed-transition hover:bg-white/[0.03]",
@@ -77,6 +78,7 @@ const TreeNode = ({ node, level = 0, openFile, activeFileId, handleDeleteFile, h
             {node.name !== 'root' && (
                 <div
                     onClick={() => setIsOpen(!isOpen)}
+                    onContextMenu={(e) => onContextMenu(e, node)}
                     style={{ paddingLeft: `${level * 16 + 12}px` }}
                     className={cn(
                         "flex items-center gap-2 py-1.5 pr-3 cursor-pointer text-[#8B949E] hover:text-[#E6EDF3] hover:bg-white/[0.02] group transition-colors relative",
@@ -119,6 +121,7 @@ const TreeNode = ({ node, level = 0, openFile, activeFileId, handleDeleteFile, h
                             handleDeleteFolder={handleDeleteFolder}
                             handleRunFolder={handleRunFolder}
                             previewRootPath={previewRootPath}
+                            onContextMenu={onContextMenu}
                         />
                     ))}
                 </div>
@@ -135,7 +138,7 @@ const FileExplorer = ({ projectId }) => {
     const activeFileId = useEditorStore(state => state.activeFileId);
     const openFile = useEditorStore(state => state.openFile);
     const closeFile = useEditorStore(state => state.closeFile);
-    const [searchQuery, setSearchQuery] = useState('');
+    const [searchQuery, setSearchQuery] = React.useState('');
 
     const handleDeleteFile = async (e, fileId) => {
         e.stopPropagation();
@@ -167,9 +170,42 @@ const FileExplorer = ({ projectId }) => {
     const setPreviewRootPath = useProjectStore(state => state.setPreviewRootPath);
     const previewRootPath = useProjectStore(state => state.previewRootPath);
     const setPreviewOpen = useEditorStore(state => state.setPreviewOpen);
+    const setBrowserUrl = useEditorStore(state => state.setBrowserUrl);
+
+    const [contextMenu, setContextMenu] = React.useState({ visible: false, x: 0, y: 0, node: null });
+
+    const handleContextMenu = (e, node) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({
+            visible: true,
+            x: e.clientX,
+            y: e.clientY,
+            node
+        });
+    };
+
+    const handleCopyPath = () => {
+        if (contextMenu.node) {
+            const fullPath = contextMenu.node.isFolder ? contextMenu.node.path : (files.find(f => f.id === contextMenu.node.id)?.name || contextMenu.node.name);
+            const url = `speed.local/${fullPath}`;
+            navigator.clipboard.writeText(url);
+            setContextMenu({ ...contextMenu, visible: false });
+        }
+    };
+
+    const handleOpenInWeb = () => {
+        if (contextMenu.node) {
+            const fullPath = contextMenu.node.isFolder ? contextMenu.node.path : (files.find(f => f.id === contextMenu.node.id)?.name || contextMenu.node.name);
+            const url = `speed.local/${fullPath}`;
+            setBrowserUrl(url);
+            setPreviewOpen(true);
+            setContextMenu({ ...contextMenu, visible: false });
+        }
+    };
 
     const handleRunFolder = (e, path) => {
-        e.stopPropagation();
+        if (e) e.stopPropagation();
         // If they click on file, find its parent dir. Else set folder directly.
         let runPath = path;
         const matchingFile = files.find(f => f.name === path);
@@ -191,6 +227,13 @@ const FileExplorer = ({ projectId }) => {
             await createFile(projectId, name, '', languageMap[ext] || 'javascript');
         }
     };
+
+    // Close menu on click elsewhere
+    React.useEffect(() => {
+        const handleClick = () => setContextMenu({ ...contextMenu, visible: false });
+        window.addEventListener('click', handleClick);
+        return () => window.removeEventListener('click', handleClick);
+    }, [contextMenu]);
 
     return (
         <div className="flex flex-col h-full bg-[#111317]">
@@ -249,9 +292,38 @@ const FileExplorer = ({ projectId }) => {
                         });
                     });
 
-                    return <TreeNode node={root} openFile={openFile} activeFileId={activeFileId} handleDeleteFile={handleDeleteFile} handleDeleteFolder={handleDeleteFolder} handleRunFolder={handleRunFolder} previewRootPath={previewRootPath} />;
+                    return <TreeNode node={root} openFile={openFile} activeFileId={activeFileId} handleDeleteFile={handleDeleteFile} handleDeleteFolder={handleDeleteFolder} handleRunFolder={handleRunFolder} previewRootPath={previewRootPath} onContextMenu={handleContextMenu} />;
                 })()}
             </div>
+
+            {/* Context Menu */}
+            <AnimatePresence>
+                {contextMenu.visible && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        style={{ top: contextMenu.y, left: contextMenu.x }}
+                        className="fixed z-[100] w-48 bg-[#1A1F29] border border-[#2D333B] rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden p-1.5"
+                    >
+                        <button onClick={handleCopyPath} className="w-full flex items-center gap-3 px-3 py-2 text-[11px] font-bold text-[#9DA5B4] hover:text-white hover:bg-white/5 rounded-lg transition-all group">
+                            <Copy className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100" />
+                            Copy Path
+                        </button>
+                        {contextMenu.node?.name.match(/\.(html|htm)$/i) && (
+                            <button onClick={handleOpenInWeb} className="w-full flex items-center gap-3 px-3 py-2 text-[11px] font-bold text-[#00E0B8] hover:bg-[#00E0B8]/10 rounded-lg transition-all group">
+                                <ExternalLink className="w-3.5 h-3.5" />
+                                Open in Web Preview
+                            </button>
+                        )}
+                        <div className="h-[1px] bg-[#2D333B] my-1.5 mx-1" />
+                        <button onClick={(e) => { e.stopPropagation(); (contextMenu.node?.isFolder ? handleDeleteFolder(e, contextMenu.node.path) : handleDeleteFile(e, contextMenu.node.id)); setContextMenu({ ...contextMenu, visible: false }); }} className="w-full flex items-center gap-3 px-3 py-2 text-[11px] font-bold text-red-400/70 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all group">
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Delete
+                        </button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Explorer Footer */}
             <div className="p-4 border-t border-[#1F2430] bg-[#0D0F12]/30">

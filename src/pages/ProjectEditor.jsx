@@ -5,6 +5,7 @@ import { useEditorStore } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { useTerminalStore } from '../store/terminalStore';
 import { useAIStore } from '../store/aiStore';
+import { supabase } from '../services/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Layout,
@@ -38,6 +39,7 @@ import FileExplorer from '../editor/FileExplorer';
 import AIChat from '../agent/AIChat';
 import TabBar from '../editor/TabBar';
 import Terminal from '../editor/Terminal';
+import WebBrowserPanel from '../components/WebBrowserPanel';
 
 const ProjectEditor = () => {
     const { id } = useParams();
@@ -96,6 +98,18 @@ const ProjectEditor = () => {
         if (projects.length > 0) {
             const p = projects.find(proj => proj.id === id);
             setActiveProject(p);
+
+            // RLS Diagnostics
+            const loadAuth = async () => {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (p) {
+                    console.log(`[PROJECT NODE] ID: ${p.id} | Owner: ${p.user_id} | Viewer: ${user?.id}`);
+                    if (p.user_id !== user?.id) {
+                        console.warn('[SECURITY] Project owner mismatch. RLS errors likely.');
+                    }
+                }
+            };
+            loadAuth();
 
             // v6: Auto-CD into project directory in terminal
             if (p) {
@@ -566,225 +580,7 @@ const ProjectEditor = () => {
                             {/* Live Preview Pane */}
                             <AnimatePresence>
                                 {isPreviewOpen && (
-                                    <motion.div
-                                        initial={{ width: 0, opacity: 0 }}
-                                        animate={{ width: "50%", opacity: 1 }}
-                                        exit={{ width: 0, opacity: 0 }}
-                                        className="h-full bg-[#111317] flex flex-col relative overflow-hidden shrink-0"
-                                    >
-                                        <div className="h-10 border-b border-[#1F2430] flex items-center px-4 justify-between bg-[#0B0D11] shrink-0">
-                                            <div className="flex items-center gap-1.5 opacity-50">
-                                                <div className="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#CA4948]" />
-                                                <div className="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DF9A26]" />
-                                                <div className="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1DA432]" />
-                                            </div>
-                                            <div className="bg-[#151821] border border-[#1F2430] rounded-md px-4 py-1 flex items-center justify-center flex-1 max-w-[60%] mx-4 shadow-inner">
-                                                <div className="flex items-center gap-2">
-                                                    <Loader2 className="w-3 h-3 text-[#00E0B8] animate-spin" />
-                                                    <span className="text-[10px] text-[#9DA5B4] font-mono tracking-tighter">localhost:5173</span>
-                                                </div>
-                                            </div>
-                                            <button onClick={() => setPreviewOpen(false)} className="text-[#57606A] hover:text-white transition-colors bg-white/5 p-1 rounded-md">
-                                                <X className="w-3.5 h-3.5" />
-                                            </button>
-                                        </div>
-                                        <div className="flex-1 w-full relative h-[calc(100%-40px)] layout-preview-pane">
-                                            {(() => {
-                                                const sandpackFiles = {};
-                                                const previewRoot = previewRootPath;
-
-                                                files.forEach(f => {
-                                                    if (!f.name || !f.content) return;
-                                                    let path = f.name;
-
-                                                    if (previewRoot) {
-                                                        if (path.startsWith(previewRoot + '/')) {
-                                                            path = path.substring(previewRoot.length);
-                                                        } else if (path !== previewRoot && !path.startsWith(previewRoot + '/')) {
-                                                            return; // Skip this file as it belongs to a different folder
-                                                        }
-                                                    }
-
-                                                    if (!path.startsWith('/')) path = '/' + path;
-                                                    sandpackFiles[path] = f.content;
-                                                });
-                                                // 1. Detect Template dynamically
-                                                let envTemplate = "vanilla";
-                                                let hasReact = false;
-                                                let hasTs = false;
-                                                let hasVue = false;
-                                                let hasSvelte = false;
-
-                                                let hasWebFiles = false;
-
-                                                Object.keys(sandpackFiles).forEach(pf => {
-                                                    const content = sandpackFiles[pf] || "";
-                                                    if (pf.endsWith('.tsx') || pf.endsWith('.ts')) hasTs = true;
-                                                    if (pf.endsWith('.jsx') || pf.endsWith('.tsx')) hasReact = true;
-                                                    if (pf.endsWith('.vue')) hasVue = true;
-                                                    if (pf.endsWith('.svelte')) hasSvelte = true;
-                                                    if (pf.endsWith('.html') || pf.endsWith('.css') || pf.endsWith('.js')) hasWebFiles = true;
-
-                                                    // content heuristics
-                                                    if (content.includes('from "react"') || content.includes("from 'react'")) hasReact = true;
-                                                    if (content.includes('from "vue"') || content.includes("from 'vue'")) hasVue = true;
-                                                    if (content.includes('from "svelte"') || content.includes("from 'svelte'")) hasSvelte = true;
-                                                });
-
-                                                if (sandpackFiles['/package.json']) {
-                                                    if (sandpackFiles['/package.json'].includes('"react"')) hasReact = true;
-                                                    if (sandpackFiles['/package.json'].includes('"vue"')) hasVue = true;
-                                                    if (sandpackFiles['/package.json'].includes('"svelte"')) hasSvelte = true;
-                                                }
-
-                                                if (hasReact && hasTs) envTemplate = "vite-react-ts";
-                                                else if (hasReact) envTemplate = "vite-react";
-                                                else if (hasVue && hasTs) envTemplate = "vite-vue-ts";
-                                                else if (hasVue) envTemplate = "vite-vue";
-                                                else if (hasSvelte && hasTs) envTemplate = "vite-svelte-ts";
-                                                else if (hasSvelte) envTemplate = "vite-svelte";
-                                                else if (hasTs) envTemplate = "vanilla-ts";
-                                                else envTemplate = "static";
-
-                                                // Default injection for missing critical files to ensure Sandpack boots 
-                                                if (!sandpackFiles['/package.json']) {
-                                                    if (hasReact) {
-                                                        sandpackFiles['/package.json'] = JSON.stringify({
-                                                            dependencies: { "react": "^18.2.0", "react-dom": "^18.2.0", "react-router-dom": "^6.20.0", "lucide-react": "^0.292.0" }
-                                                        }, null, 2);
-                                                    } else {
-                                                        sandpackFiles['/package.json'] = JSON.stringify({
-                                                            dependencies: {}
-                                                        }, null, 2);
-                                                    }
-                                                }
-
-                                                // Determine the correct entrypoint dynamically based on what files exist
-                                                let entryPoint = "/index.js";
-                                                if (hasReact) {
-                                                    if (sandpackFiles['/src/main.jsx']) entryPoint = '/src/main.jsx';
-                                                    else if (sandpackFiles['/src/main.js']) entryPoint = '/src/main.js';
-                                                    else if (sandpackFiles['/src/index.jsx']) entryPoint = '/src/index.jsx';
-                                                    else if (sandpackFiles['/src/index.js']) entryPoint = '/src/index.js';
-                                                    else if (sandpackFiles['/main.jsx']) entryPoint = '/main.jsx';
-                                                    else if (sandpackFiles['/main.js']) entryPoint = '/main.js';
-                                                    else if (sandpackFiles['/index.jsx']) entryPoint = '/index.jsx';
-                                                    else if (sandpackFiles['/App.js']) entryPoint = '/App.js';
-                                                    else entryPoint = '/src/main.jsx'; // Best guess fallback
-                                                } else if (hasVue) {
-                                                    if (sandpackFiles['/src/main.js']) entryPoint = '/src/main.js';
-                                                    else if (sandpackFiles['/main.js']) entryPoint = '/main.js';
-                                                } else {
-                                                    if (sandpackFiles['/main.js']) entryPoint = '/main.js';
-                                                    else if (sandpackFiles['/script.js']) entryPoint = '/script.js';
-                                                    else entryPoint = '/index.js';
-                                                }
-
-                                                // If there's no index.html, provide a safe fallback wrapper
-                                                if (!sandpackFiles['/index.html'] && (hasReact || envTemplate.includes('vanilla') || envTemplate === 'static')) {
-                                                    if (!hasReact && !hasVue && !hasSvelte && !hasWebFiles && !hasTs) {
-                                                        // pure backend files like python were generated
-                                                        sandpackFiles['/index.html'] = `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Agent K Sandbox</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-  </head>
-  <body class="bg-[#0B0D11] text-white flex items-center justify-center h-screen w-screen m-0">
-    <div class="text-center space-y-4 p-8 border border-white/5 rounded-2xl bg-white/[0.02]">
-        <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-white/5 mx-auto mb-2">
-            <svg class="w-6 h-6 text-[#57606A]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-        </div>
-        <h2 class="text-lg font-bold tracking-tight text-[#E6EDF3]">Backend Project Detected</h2>
-        <p class="text-[#8B949E] text-sm max-w-sm">
-            Live Preview only supports visual web templates. Please execute backend files using a terminal runner.
-        </p>
-    </div>
-  </body>
-</html>`;
-                                                    } else {
-                                                        sandpackFiles['/index.html'] = `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Agent K Sandbox</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    ${sandpackFiles['/style.css'] ? '<link rel="stylesheet" href="/style.css">' : ''}
-  </head>
-  <body>
-    <div id="root"></div>
-    <div id="app"></div>
-    <script type="module" src="${entryPoint}"></script>
-  </body>
-</html>`;
-                                                    }
-                                                }
-
-                                                // Safety hatch: if Sandpack thinks it needs entryPoint but it doesn't exist, create an empty one
-                                                if (!sandpackFiles[entryPoint] && envTemplate !== 'static') {
-                                                    sandpackFiles[entryPoint] = "// Entry file automatically generated to prevent bundler crash\n";
-                                                } else if (!sandpackFiles[entryPoint] && envTemplate === 'static') {
-                                                    sandpackFiles[entryPoint] = "console.log('Project booted successfully. No main script found.');\n";
-                                                }
-                                                // Sanitize AI-generated package.json to prevent Sandpack crashes
-                                                try {
-                                                    const pkg = JSON.parse(sandpackFiles['/package.json']);
-                                                    const cleanDeps = (deps) => {
-                                                        if (!deps) return;
-                                                        Object.keys(deps).forEach(k => {
-                                                            if (
-                                                                k.includes('eslint') ||
-                                                                k.includes('prettier') ||
-                                                                k.startsWith('@babel') ||
-                                                                k.startsWith('vite') ||
-                                                                k.startsWith('@vitejs') ||
-                                                                k === 'vite'
-                                                            ) {
-                                                                delete deps[k];
-                                                            }
-                                                        });
-                                                    };
-                                                    cleanDeps(pkg.dependencies);
-                                                    cleanDeps(pkg.devDependencies);
-                                                    sandpackFiles['/package.json'] = JSON.stringify(pkg, null, 2);
-                                                } catch (e) {
-                                                    console.warn("Could not sanitize sandpack package.json", e);
-                                                }
-
-                                                return (
-                                                    <SandpackProvider
-                                                        key={`${previewRoot || 'root'} -${envTemplate} `}
-                                                        template={envTemplate}
-                                                        files={sandpackFiles}
-                                                        theme="dark"
-                                                        customSetup={{
-                                                            dependencies: hasReact ? {
-                                                                "react-router-dom": "^6.20.0",
-                                                                "lucide-react": "^0.292.0",
-                                                                "framer-motion": "^10.16.4"
-                                                            } : {}
-                                                        }}
-                                                        options={{
-                                                            classes: {
-                                                                "sp-wrapper": "custom-sp-wrapper",
-                                                                "sp-layout": "custom-sp-layout",
-                                                                "sp-preview-container": "custom-sp-preview-container"
-                                                            },
-                                                        }}
-                                                    >
-                                                        <SandpackLayout style={{ height: "100%", width: "100%", border: "none", borderRadius: 0, overflow: "hidden" }}>
-                                                            <SandpackPreview style={{ height: "100%", width: "100%", minHeight: "100%", position: "absolute", top: 0, left: 0 }} showNavigator={false} showRefreshButton={true} showOpenInCodeSandbox={false} />
-                                                        </SandpackLayout>
-                                                    </SandpackProvider>
-                                                );
-                                            })()}
-                                        </div>
-                                    </motion.div>
+                                    <WebBrowserPanel projectId={id} />
                                 )}
                             </AnimatePresence>
                         </div>

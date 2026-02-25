@@ -10,8 +10,10 @@ export const useEditorStore = create((set) => ({
     monacoInstance: null,
 
     isPreviewOpen: false,
+    browserUrl: 'agent://welcome',
     togglePreview: () => set((state) => ({ isPreviewOpen: !state.isPreviewOpen })),
     setPreviewOpen: (isOpen) => set({ isPreviewOpen: isOpen }),
+    setBrowserUrl: (url) => set({ browserUrl: url }),
 
     setEditorInstance: (instance) => set({ editorInstance: instance }),
     setMonacoInstance: (instance) => set({ monacoInstance: instance }),

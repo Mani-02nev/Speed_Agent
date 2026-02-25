@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS public.users (
 -- 2. Projects table
 CREATE TABLE IF NOT EXISTS public.projects (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL, -- v6: Direct auth reference
   name TEXT NOT NULL,
   description TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
@@ -44,36 +44,63 @@ ALTER TABLE public.files ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 
 -- Users policies
-CREATE POLICY "Users can view their own profile" ON public.users FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users can update their own profile" ON public.users FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "Users can insert their own profile" ON public.users FOR INSERT WITH CHECK (auth.uid() = id);
+DROP POLICY IF EXISTS "Users can view their own profile" ON public.users;
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.users;
+DROP POLICY IF EXISTS "Users can insert their own profile" ON public.users;
+
+CREATE POLICY "users_select_policy" ON public.users FOR SELECT TO authenticated USING (auth.uid() = id);
+CREATE POLICY "users_update_policy" ON public.users FOR UPDATE TO authenticated USING (auth.uid() = id);
+CREATE POLICY "users_insert_policy" ON public.users FOR INSERT TO authenticated WITH CHECK (auth.uid() = id);
 
 -- Projects policies
-CREATE POLICY "Users can view their own projects" ON public.projects FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can create their own projects" ON public.projects FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can update their own projects" ON public.projects FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "Users can delete their own projects" ON public.projects FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can view their own projects" ON public.projects;
+DROP POLICY IF EXISTS "Users can create their own projects" ON public.projects;
+DROP POLICY IF EXISTS "Users can update their own projects" ON public.projects;
+DROP POLICY IF EXISTS "Users can delete their own projects" ON public.projects;
+DROP POLICY IF EXISTS "projects_select_policy" ON public.projects;
+DROP POLICY IF EXISTS "projects_insert_policy" ON public.projects;
+DROP POLICY IF EXISTS "projects_update_policy" ON public.projects;
+DROP POLICY IF EXISTS "projects_delete_policy" ON public.projects;
+
+CREATE POLICY "projects_select_policy" ON public.projects FOR SELECT TO authenticated USING (auth.uid() = user_id);
+CREATE POLICY "projects_insert_policy" ON public.projects FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "projects_update_policy" ON public.projects FOR UPDATE TO authenticated USING (auth.uid() = user_id);
+CREATE POLICY "projects_delete_policy" ON public.projects FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
 -- Files policies
-CREATE POLICY "Users can view files of their projects" ON public.files FOR SELECT USING (
-  EXISTS (SELECT 1 FROM public.projects WHERE projects.id = files.project_id AND projects.user_id = auth.uid())
+DROP POLICY IF EXISTS "Users can view files of their projects" ON public.files;
+DROP POLICY IF EXISTS "Users can create files in their projects" ON public.files;
+DROP POLICY IF EXISTS "Users can update files in their projects" ON public.files;
+DROP POLICY IF EXISTS "Users can delete files from their projects" ON public.files;
+DROP POLICY IF EXISTS "files_select_policy" ON public.files;
+DROP POLICY IF EXISTS "files_insert_policy" ON public.files;
+DROP POLICY IF EXISTS "files_update_policy" ON public.files;
+DROP POLICY IF EXISTS "files_delete_policy" ON public.files;
+
+CREATE POLICY "files_select_policy" ON public.files FOR SELECT TO authenticated USING (
+  project_id IN (SELECT id FROM public.projects WHERE user_id = auth.uid())
 );
-CREATE POLICY "Users can create files in their projects" ON public.files FOR INSERT WITH CHECK (
-  EXISTS (SELECT 1 FROM public.projects WHERE projects.id = files.project_id AND projects.user_id = auth.uid())
+CREATE POLICY "files_insert_policy" ON public.files FOR INSERT TO authenticated WITH CHECK (
+  project_id IN (SELECT id FROM public.projects WHERE user_id = auth.uid())
 );
-CREATE POLICY "Users can update files in their projects" ON public.files FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM public.projects WHERE projects.id = files.project_id AND projects.user_id = auth.uid())
+CREATE POLICY "files_update_policy" ON public.files FOR UPDATE TO authenticated USING (
+  project_id IN (SELECT id FROM public.projects WHERE user_id = auth.uid())
 );
-CREATE POLICY "Users can delete files from their projects" ON public.files FOR DELETE USING (
-  EXISTS (SELECT 1 FROM public.projects WHERE projects.id = files.project_id AND projects.user_id = auth.uid())
+CREATE POLICY "files_delete_policy" ON public.files FOR DELETE TO authenticated USING (
+  project_id IN (SELECT id FROM public.projects WHERE user_id = auth.uid())
 );
 
 -- Messages policies
-CREATE POLICY "Users can view messages of their projects" ON public.messages FOR SELECT USING (
-  EXISTS (SELECT 1 FROM public.projects WHERE projects.id = messages.project_id AND projects.user_id = auth.uid())
+DROP POLICY IF EXISTS "Users can view messages of their projects" ON public.messages;
+DROP POLICY IF EXISTS "Users can create messages in their projects" ON public.messages;
+DROP POLICY IF EXISTS "messages_select_policy" ON public.messages;
+DROP POLICY IF EXISTS "messages_insert_policy" ON public.messages;
+
+CREATE POLICY "messages_select_policy" ON public.messages FOR SELECT TO authenticated USING (
+  project_id IN (SELECT id FROM public.projects WHERE user_id = auth.uid())
 );
-CREATE POLICY "Users can create messages in their projects" ON public.messages FOR INSERT WITH CHECK (
-  EXISTS (SELECT 1 FROM public.projects WHERE projects.id = messages.project_id AND projects.user_id = auth.uid())
+CREATE POLICY "messages_insert_policy" ON public.messages FOR INSERT TO authenticated WITH CHECK (
+  project_id IN (SELECT id FROM public.projects WHERE user_id = auth.uid())
 );
 
 -- Function to handle user creation
@@ -81,21 +108,31 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
   INSERT INTO public.users (id, full_name, avatar_url)
-  VALUES (new.id, new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'avatar_url');
+  VALUES (
+    new.id, 
+    COALESCE(new.raw_user_meta_data->>'full_name', new.email), 
+    COALESCE(new.raw_user_meta_data->>'avatar_url', 'https://ui-avatars.com/api/?name=' || COALESCE(new.raw_user_meta_data->>'full_name', 'Member'))
+  )
+  ON CONFLICT (id) DO NOTHING;
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger to call high-level user creation on auth.users insert
--- Storage Policies (Run these if storage bucket 'project-assets' exists)
--- INSERT INTO storage.buckets (id, name, public) VALUES ('project-assets', 'project-assets', true);
+-- Trigger to call user creation on auth.users insert
+CREATE OR REPLACE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
-CREATE POLICY "Project assets are publicly accessible" ON storage.objects FOR SELECT USING (bucket_id = 'project-assets');
-CREATE POLICY "Users can upload assets to their projects" ON storage.objects FOR INSERT WITH CHECK (
-  bucket_id = 'project-assets' AND (auth.uid() IS NOT NULL)
-);
-CREATE POLICY "Users can delete their own assets" ON storage.objects FOR DELETE USING (
-  bucket_id = 'project-assets' AND (auth.uid() IS NOT NULL)
-);
+-- v6 REPAIR SCRIPT: Sync existing users
+INSERT INTO public.users (id, full_name, avatar_url)
+SELECT 
+  id, 
+  COALESCE(raw_user_meta_data->>'full_name', email), 
+  'https://ui-avatars.com/api/?name=User'
+FROM auth.users
+ON CONFLICT (id) DO NOTHING;
 
--- Note: In a real app, you'd want to restrict storage paths to /projects/:projectId/ to match user ownership.
+-- Standard Grants
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon;

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTerminalStore } from '../store/terminalStore';
+import { useEditorStore } from '../store/editorStore';
+import { useProjectStore } from '../store/projectStore';
 import { Terminal as TerminalIcon, X } from 'lucide-react';
 import { cn } from '../utils/cn';
 
@@ -7,21 +9,82 @@ const Terminal = ({ projectId }) => {
     const history = useTerminalStore(state => state.history);
     const currentDirectory = useTerminalStore(state => state.currentDirectory);
     const executeCommand = useTerminalStore(state => state.executeCommand);
+    const setPreviewOpen = useEditorStore(state => state.setPreviewOpen);
+    const setBrowserUrl = useEditorStore(state => state.setBrowserUrl);
+    const files = useProjectStore(state => state.files);
+    const deleteFile = useProjectStore(state => state.deleteFile);
+
     const [input, setInput] = useState('');
+    const [isDevServerRunning, setIsDevServerRunning] = useState(false);
     const scrollRef = useRef(null);
 
     useEffect(() => {
+        const lastEntry = history[history.length - 1];
+        if (!lastEntry || lastEntry.type !== 'output') {
+            if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            return;
+        }
+
+        // RUN_DEV_SERVER
+        if (lastEntry.content === 'RUN_DEV_SERVER') {
+            setIsDevServerRunning(true);
+            setBrowserUrl('localhost:5173');
+            setPreviewOpen(true);
+            useTerminalStore.setState(prev => {
+                const newHistory = [...prev.history];
+                newHistory[newHistory.length - 1] = {
+                    type: 'output',
+                    content: `> vite\n\n  VITE v5.0.0  ready in 122 ms\n\n  ➜  Local:   http://localhost:5173/\n\nPress 'c' and hit Enter to stop.`
+                };
+                return { history: newHistory };
+            });
+        }
+
+        // DELETE_ALL_FILES — rm *
+        if (lastEntry.content === 'DELETE_ALL_FILES') {
+            const currentFiles = useProjectStore.getState().files;
+            Promise.all(currentFiles.map(f => deleteFile(f.id))).then(() => {
+                useTerminalStore.setState(prev => {
+                    const newHistory = [...prev.history];
+                    newHistory[newHistory.length - 1] = {
+                        type: 'output',
+                        content: `Removed ${currentFiles.length} file(s). Project directory cleared.`
+                    };
+                    return { history: newHistory };
+                });
+            }).catch(err => {
+                useTerminalStore.setState(prev => {
+                    const newHistory = [...prev.history];
+                    newHistory[newHistory.length - 1] = { type: 'error', content: `rm: Error deleting files: ${err.message}` };
+                    return { history: newHistory };
+                });
+            });
+        }
+
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-    }, [history]);
+    }, [history, setBrowserUrl, setPreviewOpen, deleteFile]);
 
     const handleCommand = (e) => {
         e.preventDefault();
-        if (!input.trim()) return;
-        executeCommand(projectId, input);
+        const cmd = input.trim();
+        if (!cmd) return;
+
+        if (isDevServerRunning && (cmd.toLowerCase() === 'c' || cmd.toLowerCase() === 'stop')) {
+            setIsDevServerRunning(false);
+            setPreviewOpen(false);
+            useTerminalStore.setState(prev => ({
+                history: [...prev.history, { type: 'input', content: cmd, cwd: prev.currentDirectory }, { type: 'output', content: 'Server stopped.' }]
+            }));
+            setInput('');
+            return;
+        }
+
+        executeCommand(projectId, cmd);
         setInput('');
     };
+
 
     // Clean display for path
     const displayPath = currentDirectory.replace('/home/user', '~');

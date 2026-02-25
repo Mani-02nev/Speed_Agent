@@ -17,24 +17,10 @@ export const useAuthStore = create((set, get) => ({
                 .single();
 
             if (error) {
-                if (error.code === 'PGRST116') { // Record not found
-                    console.log('Profile missing, creating new one...');
-                    const { data: newUser } = await supabase.auth.getUser();
-                    const { data: created, error: createError } = await supabase
-                        .from('users')
-                        .insert({
-                            id: userId,
-                            full_name: newUser?.user?.user_metadata?.full_name || newUser?.user?.email?.split('@')[0],
-                            avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(userId)}`,
-                        })
-                        .select()
-                        .single();
-
-                    if (createError) throw createError;
-                    set({ profile: created });
-                } else {
-                    throw error;
-                }
+                // PGRST116 means record not found. We don't manually insert anymore,
+                // we assume the DB trigger handle_new_user() did its job.
+                // If it's still missing, it's likely a sync issue.
+                if (error.code !== 'PGRST116') throw error;
             } else {
                 set({ profile: data });
             }
@@ -59,18 +45,8 @@ export const useAuthStore = create((set, get) => ({
         });
         if (error) throw error;
 
-        if (data.user) {
-            // Create profile entry
-            const { error: profileError } = await supabase
-                .from('users')
-                .insert({
-                    id: data.user.id,
-                    full_name: fullName,
-                    avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}`,
-                });
-            if (profileError) console.error('Error creating profile:', profileError);
-        }
-
+        if (error) throw error;
+        // User profile is handled via DB trigger on_auth_user_created
         return data;
     },
 
