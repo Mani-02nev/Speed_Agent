@@ -1,16 +1,42 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAIStore } from '../store/aiStore';
 import { useProjectStore } from '../store/projectStore';
-import { useEditorStore } from '../store/editorStore';
 import { generateAIResponse } from '../services/ai';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Cpu, Sparkles, Check, X, FileCode, ArrowUpRight, User, Play, Layout, Trash2 } from 'lucide-react';
+import { parsePatches, applyPatch, applyAllPatches, savePlanToProject } from '../services/agent';
+import { BRAND } from '../constants/brand';
+import PlanPreview from '../components/PlanPreview';
+import {
+    extractPlanMarkdown,
+    extractBriefSummary,
+    extractPlanStepsSnippet,
+    extractFileStructureSnippet,
+    extractPlanFromMessages,
+    getPlanContentFromProject,
+    createPlanPatch,
+    extractConfidence,
+    extractRiskLevel,
+} from '../utils/planParser';
+import { resolveAgentMode } from '../utils/agentMode';
+import { Send, Sparkles, X, FileCode, Trash2 } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 const AIChat = ({ projectId }) => {
-    const { messages, addMessage, fetchMessages, isTyping, setIsTyping, pendingPatches, setPendingPatches, clearPendingPatches, agentMode, setAgentMode, autoExecute, setAutoExecute, deleteMessages } = useAIStore();
+    const {
+        messages,
+        addMessage,
+        fetchMessages,
+        isWorking,
+        setIsWorking,
+        pendingPatches,
+        setPendingPatches,
+        planApproved,
+        setPlanApproved,
+        lastPlanMarkdown,
+        setLastPlanMarkdown,
+        deleteMessages,
+    } = useAIStore();
+
     const { files } = useProjectStore();
-    const { activeFileId, tabs, setPreviewOpen } = useEditorStore();
     const [input, setInput] = useState('');
     const scrollRef = useRef(null);
 
@@ -18,296 +44,376 @@ const AIChat = ({ projectId }) => {
         fetchMessages(projectId);
     }, [projectId, fetchMessages]);
 
+    // Restore plan preview after reload / navigation
     useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        if (planApproved) return;
+
+        const fromMessages = extractPlanFromMessages(messages);
+        const fromFile = getPlanContentFromProject(files);
+        const planMd = fromMessages || fromFile || lastPlanMarkdown;
+
+        if (!planMd) return;
+
+        if (planMd !== lastPlanMarkdown) {
+            setLastPlanMarkdown(planMd);
         }
-    }, [messages, isTyping, pendingPatches]);
 
-    const activeFile = tabs.find(t => t.id === activeFileId);
+        const hasPlanPatch = pendingPatches.some((p) => p.fileName.toLowerCase() === 'plan.md');
+        if (!hasPlanPatch) {
+            const patch = createPlanPatch(planMd, files);
+            if (patch) setPendingPatches([patch, ...pendingPatches.filter((p) => p.fileName.toLowerCase() !== 'plan.md')]);
+        }
+    }, [messages, files, planApproved]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const submitPrompt = async (promptText) => {
-        if (!promptText.trim() || isTyping) return;
+    const planPatch = pendingPatches.find((p) => p.fileName.toLowerCase() === 'plan.md');
+    const codePatches = pendingPatches.filter((p) => p.fileName.toLowerCase() !== 'plan.md');
 
-        setIsTyping(true);
+    const displayPlan = useMemo(() => {
+        return (
+            planPatch?.newContent ||
+            lastPlanMarkdown ||
+            getPlanContentFromProject(files) ||
+            extractPlanFromMessages(messages) ||
+            ''
+        );
+    }, [planPatch, lastPlanMarkdown, files, messages]);
+
+    const phase = useMemo(() => {
+        if (!planApproved && displayPlan) return 'review';
+        if (!planApproved) return 'plan';
+        return 'build';
+    }, [planApproved, displayPlan]);
+
+    const planMeta = useMemo(() => ({
+        confidence: extractConfidence(displayPlan),
+        risk: extractRiskLevel(displayPlan),
+    }), [displayPlan]);
+
+    useEffect(() => {
+        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    }, [messages, isWorking, codePatches.length]);
+
+    const buildContext = useCallback(() => {
+        const projectStructure = files.map((f) => f.name).join(', ') || '(empty)';
+        const prunedHistory = messages.slice(-2).map((m) => {
+            if (m.role === 'assistant') {
+                const s = extractBriefSummary(m.content) || 'Update.';
+                return { role: m.role, content: s.slice(0, 100) };
+            }
+            return { role: m.role, content: m.content.substring(0, 280) };
+        });
+
+        return [
+            {
+                role: 'system',
+                content: `Files: ${projectStructure.slice(0, 200)}\nPlan approved: ${planApproved ? 'yes' : 'no'}`,
+            },
+            ...prunedHistory,
+        ];
+    }, [files, messages, planApproved]);
+
+    const submitPrompt = async (promptText, forceMode) => {
+        if (!promptText.trim() || isWorking) return;
+
+        const mode = resolveAgentMode({ planApproved, promptText, forceMode });
+        setIsWorking(true);
+
+        const planFile = files.find((f) => f.name.toLowerCase() === 'plan.md');
+        const planContent = planFile?.content || lastPlanMarkdown || displayPlan || '';
+        const planSnippet =
+            mode === 'build' && planContent ? extractPlanStepsSnippet(planContent, 1200) : '';
+        const fileStructure =
+            mode === 'build' && planContent ? extractFileStructureSnippet(planContent, 900) : '';
+        const planOnly = mode === 'plan';
 
         try {
             await addMessage(projectId, 'user', promptText);
 
-            const projectStructure = files.map(f => f.name).join(', ');
-
-            // v6: Production Context Pruning (Limit to last 6 exchanges, Strip Code)
-            const prunedHistory = messages.slice(-6).map(m => {
-                if (m.role === 'assistant') {
-                    // Extract only the description, ignore the raw code blocks to save 90% tokens
-                    const cleanText = m.content.split(/(?:#\s*File:|```)/i)[0].trim();
-                    return { role: m.role, content: cleanText || "Project updated." };
-                }
-                return { role: m.role, content: m.content.substring(0, 500) }; // Limit user message length in context
-            });
-
-            const context = [
-                {
-                    role: 'system',
-                    content: `WORKSPACE: ${projectStructure}\nACTIVE: ${activeFile?.name || 'None'}`
-                },
-                ...prunedHistory
-            ];
-
+            let fullResponse = '';
             const response = await generateAIResponse({
                 prompt: promptText,
-                context,
-                agentMode
+                context: buildContext(),
+                agentMode: mode,
+                planSnippet,
+                fileStructure,
+                onChunk: (_c, full) => {
+                    fullResponse = full;
+                    const streamingPlan = extractPlanMarkdown(full);
+                    if (streamingPlan && planOnly) {
+                        setLastPlanMarkdown(streamingPlan);
+                    }
+                },
             });
 
-            // Handle Structured Error
-            if (response && response.status === 'quota_exceeded') {
-                await addMessage(projectId, 'assistant', "AI service temporarily unavailable (Quota reached). Please retry in a few moments.");
+            if (response?.status === 'quota_exceeded') {
+                await addMessage(
+                    projectId,
+                    'assistant',
+                    'Groq limit reached. Wait 60 seconds, clear chat, or use a shorter prompt.'
+                );
+                return;
+            }
+            if (response?.status === 'error') {
+                await addMessage(projectId, 'assistant', response.message);
                 return;
             }
 
-            if (response && response.status === 'error') {
-                await addMessage(projectId, 'assistant', `Neural Signal Interrupted: ${response.message}`);
-                return;
-            }
+            const text = typeof response === 'string' ? response : fullResponse;
+            const planMd = extractPlanMarkdown(text);
+            if (planMd) setLastPlanMarkdown(planMd);
 
-            // v6: Parse patches instead of auto-applying, unless in execute mode
-            const { parsePatches, applyPatch } = await import('../services/agent');
-            const patches = await parsePatches(projectId, response);
-
-            if (agentMode === 'execute' || autoExecute) {
-                // Autonomously apply in execute mode
-                for (const p of patches) {
-                    await applyPatch(projectId, p);
-                }
-            }
-
-            // Hide raw code from bubble via render logic
-            await addMessage(projectId, 'assistant', response);
-
+            await parsePatches(projectId, text, { planOnly });
+            await addMessage(projectId, 'assistant', text);
         } catch (error) {
-            console.error("Neural Node Failure:", error);
-            // If it's a Supabase RLS error (403), don't try to add another message as it will fail too
-            if (error && (error.status === 403 || error.code === '42501')) {
-                console.error("[CRITICAL RLS] Permission denied. Ensure project node matches user identity.");
-                return;
-            }
+            console.error(error);
             try {
-                await addMessage(projectId, 'assistant', "Node connection loss. Initializing recovery...");
-            } catch (recoveryError) {
-                console.error("Recovery failed:", recoveryError);
+                await addMessage(
+                    projectId,
+                    'assistant',
+                    'Could not reach Groq. Check VITE_GROQ_KEY_1=gsk_… in .env, restart npm run dev, or clear chat if the request was too large.'
+                );
+            } catch {
+                /* */
             }
         } finally {
-            setIsTyping(false);
+            setIsWorking(false);
         }
     };
 
-    const handleSend = async (e) => {
-        if (e) e.preventDefault();
-        const userMessage = input;
-        if (!userMessage.trim()) return;
+    const handleSend = (e) => {
+        e?.preventDefault();
+        const text = input.trim();
+        if (!text) return;
         setInput('');
+        submitPrompt(text);
+    };
+
+    const handleApprovePlan = async () => {
+        const content = displayPlan;
+        if (!content?.trim()) return;
+
         try {
-            await submitPrompt(userMessage);
-        } catch (err) {
-            console.error("Submission failed:", err);
-        }
-    };
-
-    const handleCommand = async (cmd) => {
-        try {
-            await submitPrompt(cmd);
-        } catch (err) {
-            console.error("Command execution failed:", err);
-        }
-    };
-
-    const handleBuildProject = async () => {
-        try {
-            await addMessage(projectId, 'user', 'Build Project');
-            setIsTyping(true);
-            setTimeout(async () => {
-                try {
-                    await addMessage(projectId, 'assistant', 'Virtual build complete. No errors detected. System is stable.');
-                } catch (err) {
-                    console.error("Build status message failed:", err);
-                } finally {
-                    setIsTyping(false);
-                }
-            }, 1500);
-        } catch (err) {
-            console.error("Build initiation failed:", err);
-        }
-    };
-
-    const handleRunPreview = async () => {
-        try {
-            setPreviewOpen(true);
-            await addMessage(projectId, 'user', 'Run Preview');
-            setIsTyping(true);
-            setTimeout(async () => {
-                try {
-                    await addMessage(projectId, 'assistant', 'Project preview mounted successfully.');
-                } catch (err) {
-                    console.error("Preview status message failed:", err);
-                } finally {
-                    setIsTyping(false);
-                }
-            }, 1500);
-        } catch (err) {
-            console.error("Preview initiation failed:", err);
-        }
-    };
-
-    const handleAcceptPatch = async (patch) => {
-        const { applyPatch } = await import('../services/agent');
-        await applyPatch(projectId, patch);
-    };
-
-    const handleRejectPatch = (patch) => {
-        setPendingPatches(pendingPatches.filter(p => p !== patch));
-    };
-
-    const renderMessage = (m, key) => {
-        const isUser = m.role === 'user';
-        // v6: Intelligent display - Hide structured code blocks from chat bubble
-        let displayContent = m.content;
-        const fileIndex = m.content.search(/(?:#\s*File:|#File:|File:|FILE:)/i);
-        if (fileIndex !== -1) {
-            displayContent = m.content.substring(0, fileIndex).trim();
-        } else {
-            // If it's just a code block without a marker, show a summary instead of raw code
-            if (m.content.includes('```')) {
-                displayContent = m.content.split('```')[0].trim() || "Generated system module instructions.";
+            if (planPatch) {
+                await applyPatch(projectId, planPatch);
+            } else {
+                await savePlanToProject(projectId, content);
             }
+            setPlanApproved(true);
+            setLastPlanMarkdown(content);
+            setPendingPatches(pendingPatches.filter((p) => p.fileName.toLowerCase() !== 'plan.md'));
+        } catch (err) {
+            console.error('Approve plan failed:', err);
         }
+    };
 
-        displayContent = displayContent || (m.role === 'assistant' ? "Architecting solution..." : "...");
-
-        return (
-            <motion.div
-                key={m.id || key}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={cn("flex flex-col gap-2 w-full", isUser ? "items-end" : "items-start")}
-            >
-                <div className="flex items-center gap-2 px-1">
-                    {!isUser && <div className="w-5 h-5 rounded bg-[#00E0B8]/10 flex items-center justify-center border border-[#00E0B8]/20"><Cpu className="w-3 h-3 text-[#00E0B8]" /></div>}
-                    <span className={cn("text-[9px] font-black uppercase tracking-[0.2em]", isUser ? "text-[#57606A]" : "text-[#00E0B8]")}>
-                        {isUser ? 'Client Node' : 'Agent Core'}
-                    </span>
-                    {isUser && <div className="w-5 h-5 rounded bg-white/5 flex items-center justify-center border border-white/5"><User className="w-3 h-3 text-[#57606A]" /></div>}
-                </div>
-                <div className={cn(
-                    "p-4 text-[13px] leading-relaxed font-medium max-w-[85%] rounded-2xl shadow-xl whitespace-pre-wrap",
-                    isUser ? "bg-[#1F2430] text-[#E6EDF3] rounded-tr-none border border-white/5" : "bg-[#0D0F12] text-[#9DA5B4] italic rounded-tl-none border border-[#1F2430]"
-                )}>
-                    {displayContent}
-                </div>
-            </motion.div>
+    const handleBuildStep1 = async () => {
+        if (!planApproved) await handleApprovePlan();
+        const fileList = files.find((f) => f.name.toLowerCase() === 'plan.md')
+            ? '' : '';
+        await submitPrompt(
+            'Build Step 1: output EVERY file listed in the File Structure of plan.md. Each file must be 100% complete with real working code — no placeholders, no stubs, no truncation. Follow exact file paths from the plan.',
+            'build'
         );
     };
 
+    const showPlanPreview = Boolean(displayPlan?.trim());
+
     return (
-        <div className="flex flex-col h-full bg-[#151821]">
-            <div className="p-4 border-b border-[#1F2430] bg-[#111317]/50 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                    <div className="w-2 h-2 rounded-full bg-[#00E0B8] shadow-[0_0_8px_#00E0B8]" />
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Neural Hub</span>
-                </div>
-                <div className="flex items-center gap-3">
-                    <button onClick={() => deleteMessages(projectId)} className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[#57606A] hover:bg-white/5 hover:text-red-400 transition-all">
-                        <Trash2 className="w-3 h-3" />
-                        <span className="text-[9px] font-black uppercase tracking-widest">Clear Chat</span>
-                    </button>
-                    <div className="px-2 py-0.5 rounded bg-[#00E0B8]/10 border border-[#00E0B8]/20 text-[8px] font-black text-[#00E0B8] uppercase tracking-widest">
-                        v6.0 Enterprise
+        <div className="flex flex-col h-full glass-agent-panel">
+            <header className="glass-agent-header px-4 py-3 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent-border)' }}>
+                        <Sparkles className="w-4 h-4" style={{ color: 'var(--accent-text)' }} />
+                    </div>
+                    <div className="min-w-0">
+                        <p className="text-[13px] font-semibold text-white truncate">{BRAND.name}</p>
+                        <p className="text-[10px] text-[var(--text-muted)]">{BRAND.eco}</p>
                     </div>
                 </div>
-            </div>
+                <div className="flex items-center gap-2 shrink-0">
+                    <span
+                        className={cn(
+                            'agent-phase-pill',
+                            phase === 'review' && 'agent-phase-pill--plan',
+                            phase === 'build' && 'agent-phase-pill--build'
+                        )}
+                    >
+                        {phase === 'plan'   && '① Analyze & Plan'}
+                        {phase === 'review' && '② Review & Approve'}
+                        {phase === 'build'  && '③ Build'}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => deleteMessages(projectId)}
+                        className="p-2 rounded-lg text-[var(--text-muted)] hover:text-red-400 hover:bg-white/5"
+                        title="Clear"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </button>
+                </div>
+            </header>
 
-            <div className="flex flex-col gap-2 p-4 bg-[#111317]/80 border-b border-[#1F2430]">
-                <div className="flex rounded-lg bg-[#0D0F12] p-1 border border-[#1F2430]">
-                    <button
-                        onClick={() => setAgentMode('plan')}
-                        className={cn("flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all", agentMode === 'plan' ? "bg-[#00E0B8] text-black shadow-sm" : "text-[#57606A] hover:text-white")}
-                    >
-                        Plan Mode
-                    </button>
-                    <button
-                        onClick={() => setAgentMode('execute')}
-                        className={cn("flex-1 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all", agentMode === 'execute' ? "bg-[#00E0B8] text-black shadow-sm" : "text-[#57606A] hover:text-white")}
-                    >
-                        Execute Mode
-                    </button>
-                </div>
-                {agentMode === 'plan' ? (
-                    <div className="grid grid-cols-1 gap-2 mt-2">
-                        <button onClick={() => handleCommand('Generate structured development plan')} className="py-2 bg-[#1F2430] hover:bg-[#2D333B] text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">Generate Plan</button>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-2 gap-2 mt-2">
-                        <button onClick={() => handleCommand('Execute the next pending step in plan.md')} className="py-2 bg-[#1F2430] hover:bg-[#2D333B] text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">Execute Step</button>
-                        <button onClick={() => { setAutoExecute(true); handleCommand('Execute all pending steps in plan.md sequentially') }} className="py-2 bg-[#00E0B8]/10 hover:bg-[#00E0B8]/20 text-[#00E0B8] rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">Execute Full Plan</button>
-                    </div>
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3 custom-scrollbar">
+                {showPlanPreview && (
+                    <PlanPreview
+                        markdown={displayPlan}
+                        isWorking={isWorking}
+                        planApproved={planApproved}
+                        onApprove={handleApprovePlan}
+                        onBuildStep1={handleBuildStep1}
+                    />
                 )}
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                    <button onClick={handleBuildProject} className="py-2 bg-[#1F2430] hover:bg-[#2D333B] text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5"><Cpu className="w-3 h-3" /> Build Project</button>
-                    <button onClick={handleRunPreview} className="py-2 bg-[#1F2430] hover:bg-[#2D333B] text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5"><Play className="w-3 h-3" /> Run Preview</button>
-                </div>
-            </div>
 
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar bg-[#0D0F12]/20">
-                {messages.map((m, i) => renderMessage(m, i))}
-
-                {/* Patch Approval UI */}
-                <AnimatePresence>
-                    {pendingPatches.length > 0 && (
-                        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-3">
-                            <div className="px-1 text-[9px] font-black uppercase tracking-[0.2em] text-[#00E0B8]">Pending System Modification</div>
-                            {pendingPatches.map((patch, idx) => (
-                                <div key={idx} className="bg-[#0D0F12] border border-[#1F2430] rounded-xl p-3 flex flex-col gap-3 shadow-2xl">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <FileCode className="w-4 h-4 text-[#57606A]" />
-                                            <span className="text-[12px] font-bold text-white">{patch.fileName}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-black text-[#00E0B8]">+{patch.added}</span>
-                                            <span className="text-[10px] font-black text-red-500">-{patch.removed}</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <button onClick={() => handleAcceptPatch(patch)} className="flex-1 h-8 bg-[#00E0B8] text-black rounded-lg text-[11px] font-black uppercase flex items-center justify-center gap-2 hover:scale-[1.02] transition-all">
-                                            <Check className="w-3.5 h-3.5" /> Accept
-                                        </button>
-                                        <button onClick={() => handleRejectPatch(patch)} className="h-8 w-12 bg-white/5 text-[#57606A] rounded-lg border border-white/5 flex items-center justify-center hover:text-white transition-all">
-                                            <X className="w-3.5 h-3.5" />
-                                        </button>
-                                    </div>
+                {messages.length === 0 && !isWorking && !showPlanPreview && (
+                    <div className="flex flex-col items-center text-center py-10 px-6 gap-4">
+                        <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent-border)' }}>
+                            <Sparkles className="w-5 h-5" style={{ color: 'var(--accent-text)' }} />
+                        </div>
+                        <div className="space-y-1.5">
+                            <p className="text-[13px] font-semibold text-white">Multi-Agent Workflow</p>
+                            <p className="text-[12px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                                Describe your project. The agent will <span style={{ color: 'var(--accent-text)' }}>analyze → plan → wait for approval</span> before writing any code.
+                            </p>
+                        </div>
+                        <div className="w-full space-y-1.5 pt-1">
+                            {['① Analyze & plan your requirements', '② Show confidence score + risk level', '③ Wait for your approval', '④ Build production-quality files'].map((step) => (
+                                <div key={step} className="flex items-center gap-2 text-left px-3 py-2 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                                    <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{step}</span>
                                 </div>
                             ))}
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+                        </div>
+                    </div>
+                )}
 
-                {isTyping && <div className="text-[9px] font-black text-[#00E0B8] uppercase tracking-widest animate-pulse px-1">Constructing neural sequence...</div>}
+                {messages.map((m) => {
+                    if (m.role === 'user') {
+                        return (
+                            <div key={m.id} className="flex justify-end">
+                                <div className="agent-user-bubble max-w-[90%] px-3.5 py-2.5 rounded-2xl rounded-br-md text-[13px] leading-relaxed">
+                                    {m.content}
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    const summary = extractBriefSummary(m.content);
+                    if (!summary) return null;
+
+                    return (
+                        <p key={m.id} className="text-[12px] text-[var(--text-secondary)] px-1 leading-relaxed">
+                            <Sparkles className="w-3 h-3 inline mr-1 text-[var(--accent-primary)] align-text-bottom" />
+                            {summary}
+                        </p>
+                    );
+                })}
+
+                {isWorking && (
+                    <div className="flex items-center gap-3 px-3 py-3 rounded-xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                        <div className="flex gap-1 shrink-0">
+                            {[0,1,2].map(i => (
+                                <div key={i} className="w-1.5 h-1.5 rounded-full" style={{
+                                    background: 'var(--accent)',
+                                    animation: `pulse-dot 1.2s ease-in-out ${i * 0.2}s infinite`
+                                }} />
+                            ))}
+                        </div>
+                        <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                            {phase === 'build' ? 'Coding agents writing production files…' : 'Planner & Architect agents analyzing…'}
+                        </span>
+                    </div>
+                )}
+
+                {planApproved && codePatches.length > 0 && (
+                    <div className="space-y-2 pt-1">
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--accent-mint)]">
+                                {codePatches.length} file{codePatches.length !== 1 ? 's' : ''} ready
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => applyAllPatches(projectId, codePatches)}
+                                className="text-[10px] font-semibold text-[var(--accent-primary)] hover:underline"
+                            >
+                                Apply all
+                            </button>
+                        </div>
+                        {codePatches.map((patch, idx) => (
+                            <div key={`${patch.fileName}-${idx}`} className="flex flex-col gap-1">
+                                <div className="patch-row">
+                                    <FileCode className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
+                                    <div className="flex flex-col min-w-0 flex-1">
+                                        <span className="text-[12px] font-medium text-white truncate">
+                                            {patch.fileName}
+                                        </span>
+                                        <span className="text-[10px] font-mono">
+                                            {patch.isNew
+                                                ? <span className="text-[var(--accent-mint)]">NEW</span>
+                                                : <span className="text-[var(--accent-primary)]">UPDATE</span>
+                                            }
+                                            {patch.added > 0 && <span className="text-emerald-400 ml-1">+{patch.added}</span>}
+                                            {patch.removed > 0 && <span className="text-red-400 ml-1">-{patch.removed}</span>}
+                                            <span className="text-[var(--text-muted)] ml-1">
+                                                {patch.newContent.split('\n').length} lines
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => applyPatch(projectId, patch)}
+                                        className="h-8 px-3 rounded-lg bg-[var(--accent-primary-dim)] border border-[rgba(125,211,252,0.25)] text-[var(--accent-primary)] text-[11px] font-semibold shrink-0"
+                                    >
+                                        Apply
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPendingPatches(codePatches.filter((p) => p !== patch))}
+                                        className="p-1.5 text-[var(--text-muted)] hover:text-white shrink-0"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                                {patch.qualityWarnings?.length > 0 && (
+                                    <p className="text-[10px] text-amber-400/90 px-2">
+                                        ⚠ {patch.qualityWarnings.join(' · ')}
+                                    </p>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
-            <div className="p-4 bg-[#111317] border-t border-[#1F2430]">
-                <form onSubmit={handleSend} className="relative flex items-center">
-                    <input
+            <form onSubmit={handleSend} className="p-3 shrink-0 border-t border-[var(--glass-border-soft)]">
+                <div className="agent-prompt-box flex items-end gap-2 p-2">
+                    <textarea
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="Push system update instructions..."
-                        className="w-full bg-[#0D0F12] border border-[#1F2430] rounded-xl pl-4 pr-12 py-3 text-[13px] font-medium text-white focus:outline-none focus:border-[#00E0B8]/40 transition-all"
-                        disabled={isTyping}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSend(e);
+                            }
+                        }}
+                        rows={2}
+                        disabled={isWorking}
+                        placeholder={
+                            planApproved
+                                ? 'Refine plan, or type "implement step 1" to build…'
+                                : showPlanPreview
+                                  ? 'Ask to change the plan, then click Approve plan above…'
+                                  : 'Describe your app (stack, pages, file structure)…'
+                        }
+                        className="flex-1 bg-transparent resize-none text-[14px] text-white placeholder:text-[var(--text-muted)] focus:outline-none px-2 py-2 max-h-28 leading-relaxed"
                     />
-                    <button type="submit" disabled={!input.trim() || isTyping} className="absolute right-2 p-2 rounded-lg text-[#3B4252] disabled:opacity-50">
+                    <button
+                        type="submit"
+                        disabled={!input.trim() || isWorking}
+                        className="p-2.5 rounded-xl bg-gradient-to-b from-[#93c5fd] to-[#7dd3fc] text-[#0c1222] disabled:opacity-35 disabled:from-white/10 disabled:to-white/10 disabled:text-white/30 shrink-0 transition-opacity"
+                    >
                         <Send className="w-4 h-4" />
                     </button>
-                </form>
-            </div>
+                </div>
+            </form>
         </div>
     );
 };

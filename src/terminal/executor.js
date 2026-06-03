@@ -31,10 +31,13 @@ export async function executeCommand(parsed, state, setState) {
         return "RUN_DEV_SERVER";
     }
 
-    // Handle 'run' as a special case for Piston API integration
-    if (parsed.command === "run") {
-        if (parsed.args[0] === "dev") return "RUN_DEV_SERVER";
-        return "RUN_PISTON_API"; // Special signal for the Terminal component
+    // run / run dev / run script.py / run main.cpp <<< "stdin"
+    if (parsed.command === 'run') {
+        if (parsed.args[0] === 'dev' || parsed.args[0] === 'project') return 'RUN_DEV_SERVER';
+        const hereIdx = parsed.args.indexOf('<<<');
+        const target  = (hereIdx > 0 ? parsed.args[0] : parsed.args[0]) || '__active__';
+        const stdin   = hereIdx !== -1 ? parsed.args.slice(hereIdx + 1).join(' ').replace(/^"|"$/g, '').replace(/^'|'$/g, '') : '';
+        return `RUN_ONLINE_COMPILER:${target}:::${stdin}`;
     }
 
     // rm * — delete all files signal

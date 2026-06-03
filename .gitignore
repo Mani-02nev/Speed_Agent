@@ -1,0 +1,19 @@
+# Dependencies
+node_modules
+
+# Build
+.next
+dist
+build
+
+# Environment
+.env
+.env.local
+.env.development
+.env.production
+
+# Logs
+*.log
+
+# OS
+.DS_Store

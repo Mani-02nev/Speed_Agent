@@ -51,9 +51,9 @@ const Login = () => {
                     <div className="w-16 h-16 bg-[#00E0B8] rounded-2xl flex items-center justify-center mb-8 mx-auto shadow-[0_0_30px_rgba(0,224,184,0.3)]">
                         <Zap className="w-8 h-8 text-black fill-current" />
                     </div>
-                    <h2 className="text-4xl font-black text-white tracking-tighter uppercase mb-6 leading-tight">Agent K <br />V6 Enterprise</h2>
+                    <h2 className="text-4xl font-bold text-white tracking-tight mb-6 leading-tight">Mr K Agent</h2>
                     <p className="text-slate-400 text-lg font-medium leading-relaxed">
-                        Access the most advanced AI engineering environment with live patch approvals and multi-file intelligence.
+                        Production AI development by Mr&apos;K Eco. Plan, approve, and build real web applications.
                     </p>
                 </div>
             </div>
@@ -76,7 +76,7 @@ const Login = () => {
                         <div className="w-8 h-8 bg-[#00E0B8] rounded flex items-center justify-center">
                             <Zap className="w-5 h-5 text-black fill-current" />
                         </div>
-                        <span className="text-xl font-black uppercase tracking-tighter text-[#0F172A]">Agent K</span>
+                        <span className="text-xl font-bold tracking-tight text-[#0F172A]">Mr K Agent</span>
                     </div>
 
                     <h1 className="text-3xl font-black text-[#0F172A] tracking-tighter uppercase mb-2">

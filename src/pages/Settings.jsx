@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { getAIKeyStatus, isValidGroqKey } from '../services/ai';
+import { getCompilerStatus } from '../services/compiler';
 import { motion } from 'framer-motion';
 import { ChevronLeft, User, Key, Bell, Shield, Trash2, Camera, Save, LogOut, Zap, Info, ChevronRight } from 'lucide-react';
 
@@ -88,23 +90,30 @@ const Settings = () => {
                         <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-[#64748B]">
                             <Key className="w-4 h-4" />
                         </div>
-                        <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-[#0F172A]">Neural Gateways</h2>
+                        <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-[#0F172A]">AI Provider</h2>
                     </div>
 
                     <div className="bg-white border border-[#E2E8F0] rounded-[32px] p-8 lg:p-10 shadow-sm relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-8 opacity-5">
                             <Zap className="w-32 h-32" />
                         </div>
-                        <p className="text-[#64748B] text-sm font-medium mb-10 max-w-lg">
-                            Neural provider keys are managed via secure environment variables (`.env`) for enterprise-grade isolation.
+                        <p className="text-[#64748B] text-sm font-medium mb-4 max-w-lg">
+                            Mr K Agent uses <strong>Groq only</strong>. Set{' '}
+                            <code className="text-[11px]">VITE_GROQ_KEY_1=gsk_…</code> from{' '}
+                            <a href="https://console.groq.com/keys" className="text-[#00E0B8] underline" target="_blank" rel="noreferrer">
+                                console.groq.com
+                            </a>
+                            . Restart <code className="text-[11px]">npm run dev</code> after changes. If you see 413, clear chat and use shorter prompts.
+                        </p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[#94A3B8] mb-4">
+                            Provider: {getAIKeyStatus().provider === 'groq' ? 'Groq' : 'Not configured'}
                         </p>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
                             {[
-                                { name: 'Groq', active: !!import.meta.env.VITE_GROQ_KEY, type: 'LPU Engine' },
-                                { name: 'OpenAI', active: !!import.meta.env.VITE_OPENAI_KEY, type: 'LLM Core' },
-                                { name: 'Gemini', active: !!import.meta.env.VITE_GEMINI_KEY, type: 'Multimodal' },
-                                { name: 'Deepseek', active: !!import.meta.env.VITE_DEEPSEEK_KEY, type: 'Reasoning' },
+                                { name: 'Groq key 1', active: isValidGroqKey(import.meta.env.VITE_GROQ_KEY_1), type: 'Primary' },
+                                { name: 'Groq key 2', active: isValidGroqKey(import.meta.env.VITE_GROQ_KEY_2), type: 'Rotation' },
+                                { name: 'Groq key 3', active: isValidGroqKey(import.meta.env.VITE_GROQ_KEY_3), type: 'Rotation' },
                             ].map((provider) => (
                                 <div key={provider.name} className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] group hover:border-[#00E0B8] transition-all">
                                     <div className="flex items-center justify-between mb-2">
@@ -115,6 +124,58 @@ const Settings = () => {
                                     <div className="mt-4 text-[8px] font-black uppercase tracking-[0.2em] text-[#94A3B8] group-hover:text-[#00E0B8] transition-colors">{provider.type}</div>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+
+                    <div className="bg-white border border-[#E2E8F0] rounded-[32px] p-8 lg:p-10 shadow-sm mt-6 space-y-6">
+                        <div>
+                            <p className="text-[#64748B] text-sm font-medium mb-3 max-w-lg">
+                                <strong>Preview</strong> — Sandpack (React, HTML/CSS/JS in browser).{' '}
+                                <strong>Run code</strong> —{' '}
+                                <a
+                                    href="https://api.onlinecompiler.io"
+                                    className="text-[#00E0B8] underline"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    OnlineCompiler.io
+                                </a>{' '}
+                                (12 languages, sync API).
+                            </p>
+                            <p className="text-[10px] text-[#94A3B8] font-mono">
+                                VITE_ONLINE_COMPILER_API_KEY=… (aliases: VITE_COMPILER_API_KEY, VITE_Compllier_API_KEY)
+                            </p>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                                <span className="text-[12px] font-black uppercase tracking-tight text-[#0F172A]">
+                                    Browser preview
+                                </span>
+                                <p className="text-[9px] text-[#64748B] mt-1">{getCompilerStatus().preview.runtime}</p>
+                                <div className="flex items-center gap-2 mt-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-[#00E0B8]" />
+                                    <span className="text-[9px] font-bold text-[#64748B] uppercase">Always on</span>
+                                </div>
+                            </div>
+                            <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                                <span className="text-[12px] font-black uppercase tracking-tight text-[#0F172A]">
+                                    OnlineCompiler.io
+                                </span>
+                                <p className="text-[9px] text-[#64748B] mt-1">
+                                    Terminal: <code className="text-[10px]">run</code> or{' '}
+                                    <code className="text-[10px]">run script.py</code>
+                                </p>
+                                <div className="flex items-center gap-2 mt-2">
+                                    <div
+                                        className={`w-1.5 h-1.5 rounded-full ${getCompilerStatus().online.configured ? 'bg-[#00E0B8] shadow-[0_0_8px_#00E0B8]' : 'bg-amber-400'}`}
+                                    />
+                                    <span className="text-[9px] font-bold text-[#64748B] uppercase tracking-widest">
+                                        {getCompilerStatus().online.configured
+                                            ? `${getCompilerStatus().online.languages} extensions`
+                                            : 'API key missing'}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -157,7 +218,7 @@ const Settings = () => {
                                 <img src="/logo.png" className="w-10 h-10 object-contain" alt="" />
                             </div>
                             <div className="text-left">
-                                <h3 className="text-lg font-black text-[#0F172A] uppercase tracking-tighter">About Agent K</h3>
+                                <h3 className="text-lg font-black text-[#0F172A] uppercase tracking-tighter">About Mr K Agent</h3>
                                 <p className="text-[#64748B] text-xs font-semibold uppercase tracking-widest mt-1">v1.0 Production | Tech Stach Core</p>
                             </div>
                         </div>
@@ -172,7 +233,7 @@ const Settings = () => {
                     >
                         <LogOut className="w-4 h-4" /> Disconnect Node
                     </button>
-                    <p className="text-[9px] font-bold text-[#94A3B8] mt-6 tracking-[0.4em] uppercase">Agent K Enterprise v6.0.42_STABLE</p>
+                    <p className="text-[9px] font-bold text-[#94A3B8] mt-6 tracking-[0.4em] uppercase">Mr K Agent · Mr&apos;K Eco</p>
                 </div>
             </main>
         </div>

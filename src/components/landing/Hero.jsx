@@ -19,7 +19,7 @@ const Hero = () => {
                         animate={{ opacity: 1, y: 0 }}
                         className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#00E0B8]/10 border border-[#00E0B8]/20 text-[#00E0B8] text-[10px] font-black uppercase tracking-widest mb-8"
                     >
-                        <Sparkles className="w-3 h-3" /> v6.0 Enterprise Architecture
+                        <Sparkles className="w-3 h-3" /> A product of Mr&apos;K Eco
                     </motion.div>
 
                     <motion.h1
@@ -37,7 +37,7 @@ const Hero = () => {
                         transition={{ delay: 0.2 }}
                         className="mt-8 text-xl text-[#64748B] max-w-2xl font-medium leading-relaxed"
                     >
-                        Agent K is an enterprise AI-powered development environment with live patch control, multi-file intelligence, and integrated terminal execution.
+                        Mr K Agent is a production AI IDE — plan your app, approve every change, and ship polished code with Google Gemini.
                     </motion.p>
 
                     <motion.div

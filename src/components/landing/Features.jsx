@@ -41,7 +41,7 @@ const Features = () => {
             <div className="max-w-7xl mx-auto px-6">
                 <div className="flex flex-col items-center text-center mb-16">
                     <h2 className="text-4xl font-black text-[#0F172A] tracking-tighter uppercase mb-4">Product Capabilities</h2>
-                    <p className="text-[#64748B] text-lg font-medium max-w-2xl">Agent K provides a complete architectural stack for next-gen AI software engineering.</p>
+                    <p className="text-[#64748B] text-lg font-medium max-w-2xl">Mr K Agent delivers plan-first AI development with approval gates and production-quality output.</p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">

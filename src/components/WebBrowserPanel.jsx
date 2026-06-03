@@ -22,7 +22,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../utils/cn';
-import { SandpackProvider, SandpackLayout, SandpackPreview } from "@codesandbox/sandpack-react";
+import { SandpackProvider, SandpackLayout, SandpackPreview } from '@codesandbox/sandpack-react';
+import { buildSandpackProject } from '../utils/sandpackProject';
+import { getSandpackProviderOptions, getSandpackCustomSetup } from '../services/sandpackPreview';
 
 const WebBrowserPanel = ({ projectId }) => {
     const files = useProjectStore(state => state.files);
@@ -110,6 +112,17 @@ const WebBrowserPanel = ({ projectId }) => {
 
         if (file) {
             if (file.name.endsWith('.html') || file.name.endsWith('.htm')) {
+                const hasReact = files.some(
+                    (f) =>
+                        /\.(jsx|tsx)$/.test(f.name) ||
+                        (f.content && /from ['"]react['"]/.test(f.content))
+                );
+                const hasPkg = files.some((f) => f.name.toLowerCase() === 'package.json');
+                const assetFiles = files.filter((f) => /\.(css|js|mjs)$/.test(f.name)).length;
+                if (hasReact || hasPkg || assetFiles >= 2) {
+                    return { type: 'react', url: `http://speed.local/${file.name}` };
+                }
+
                 let injectedContent = file.content;
 
                 // Inject internal CSS
@@ -331,105 +344,32 @@ const WebBrowserPanel = ({ projectId }) => {
                     ) : resolved.type === 'react' ? (
                         <div key="react" className="flex-1 w-full h-full bg-[#0D0F12] p-4 flex flex-col overflow-hidden [&_.sp-wrapper]:flex-1 [&_.sp-wrapper]:flex [&_.sp-wrapper]:flex-col [&_.sp-wrapper]:min-h-0 [&_.sp-layout]:flex-1 [&_.sp-layout]:!rounded-xl [&_.sp-layout]:!border [&_.sp-layout]:!border-[#1F2430] [&_.sp-layout]:overflow-hidden [&_.sp-layout]:shadow-2xl [&_.sp-preview-container]:flex-1 [&_.sp-preview-container]:flex [&_.sp-preview-container]:flex-col [&_iframe]:flex-1 [&_iframe]:!h-full [&_iframe]:w-full [&_iframe]:block [&_iframe]:border-none">
                             {(() => {
-                                const sandpackFiles = {};
-                                const previewRoot = previewRootPath;
-
-                                files.forEach(f => {
-                                    if (!f.name || !f.content) return;
-                                    let path = f.name;
-                                    if (previewRoot) {
-                                        if (path.startsWith(previewRoot + '/')) path = path.substring(previewRoot.length);
-                                        else if (path !== previewRoot && !path.startsWith(previewRoot + '/')) return;
-                                    }
-                                    if (!path.startsWith('/')) path = '/' + path;
-
-                                    // Auto-Heal Vite File Paths
-                                    if (path === '/src/index.jsx' || path === '/index.jsx') {
-                                        path = path.replace('index.jsx', 'main.jsx');
-                                    }
-
-                                    // Auto-Heal AI Typos for React Entrypoints
-                                    let content = f.content;
-                                    if (path.endsWith('.jsx') || path.endsWith('.tsx') || path.endsWith('.js')) {
-                                        content = content.replace(/<React\.Strict>/g, '<React.StrictMode>');
-                                        content = content.replace(/<\/React\.Strict>/g, '</React.StrictMode>');
-                                    }
-
-                                    // Auto-Heal missing App export
-                                    if (path === '/src/App.jsx' || path === '/App.jsx') {
-                                        if (content.includes('function App') && !content.includes('export default')) {
-                                            content += '\n\nexport default App;\n';
-                                        }
-                                    }
-
-                                    // Block Sandpack crashes from malformed package.json
-                                    if (path.endsWith('package.json')) {
-                                        try {
-                                            if (content.trim()) JSON.parse(content);
-                                        } catch (err) {
-                                            console.error("[SANDPACK] package.json syntax error auto-healed:", err);
-                                            content = JSON.stringify({
-                                                name: "speed-app-recovered",
-                                                dependencies: { react: "^18.2.0", "react-dom": "^18.2.0" }
-                                            });
-                                        }
-                                    }
-
-                                    sandpackFiles[path] = content;
-                                });
-
-                                // Template Detection
-                                let envTemplate = "vanilla";
-                                let hasReact = false;
-                                let hasTs = false;
-                                Object.keys(sandpackFiles).forEach(pf => {
-                                    if (pf.endsWith('.tsx') || pf.endsWith('.ts')) hasTs = true;
-                                    if (pf.endsWith('.jsx') || pf.endsWith('.tsx')) hasReact = true;
-                                });
-                                if (hasReact && hasTs) envTemplate = "vite-react-ts";
-                                else if (hasReact) envTemplate = "vite-react";
-                                else if (hasTs) envTemplate = "vanilla-ts";
-                                else envTemplate = "static";
-
-                                // Entrypoint
-                                let entryPoint = "/index.js";
-                                if (hasReact) {
-                                    const reactEntries = ['/src/main.jsx', '/src/main.js', '/src/index.jsx', '/src/index.js', '/main.jsx', '/index.jsx'];
-                                    entryPoint = reactEntries.find(e => sandpackFiles[e]) || '/src/main.jsx';
-                                }
-
-                                if (!sandpackFiles['/index.html']) {
-                                    sandpackFiles['/index.html'] = `<!DOCTYPE html><html><body><div id="root"></div><script type="module" src="${entryPoint}"></script></body></html>`;
-                                } else {
-                                    // Auto-Heal index.html script tag
-                                    sandpackFiles['/index.html'] = sandpackFiles['/index.html'].replace(/<script.+src=["'].*?["'].*?>/i, `<script type="module" src="${entryPoint}"></script>`);
-                                    // Auto-Heal missing root div
-                                    if (!sandpackFiles['/index.html'].includes('id="root"')) {
-                                        sandpackFiles['/index.html'] = sandpackFiles['/index.html'].replace(/<body>/i, '<body>\n    <div id="root"></div>');
-                                    }
-                                }
+                                const sp = buildSandpackProject(files, previewRootPath);
+                                const sandpackOptions = {
+                                    ...getSandpackProviderOptions(),
+                                    classes: {
+                                        'sp-wrapper': 'custom-sp-wrapper',
+                                        'sp-layout': 'custom-sp-layout',
+                                        'sp-pane': 'custom-sp-pane',
+                                    },
+                                };
 
                                 return (
                                     <div className="flex-1 w-full flex flex-col overflow-hidden min-h-0">
                                         <SandpackProvider
-                                            template={envTemplate}
-                                            files={sandpackFiles}
+                                            template={sp.envTemplate}
+                                            files={sp.sandpackFiles}
                                             theme="dark"
-                                            customSetup={{ dependencies: hasReact ? { "react-router-dom": "^6.20.0", "lucide-react": "^0.292.0", "framer-motion": "^10.16.4" } : {} }}
-                                            options={{
-                                                classes: {
-                                                    "sp-wrapper": "custom-sp-wrapper",
-                                                    "sp-layout": "custom-sp-layout",
-                                                    "sp-pane": "custom-sp-pane",
-                                                }
-                                            }}
+                                            customSetup={getSandpackCustomSetup(sp.hasReact)}
+                                            options={sandpackOptions}
                                         >
-                                            <SandpackLayout style={{ height: "100%", width: "100%" }}>
+                                            <SandpackLayout style={{ height: '100%', width: '100%' }}>
                                                 <SandpackPreview
-                                                    style={{ height: "100%", width: "100%", minHeight: "100%" }}
+                                                    style={{ height: '100%', width: '100%', minHeight: '100%' }}
                                                     showNavigator={false}
                                                     showOpenInCodeSandbox={false}
                                                     showRefreshButton={false}
+                                                    startRoute={sp.startRoute}
                                                 />
                                             </SandpackLayout>
                                         </SandpackProvider>
@@ -461,9 +401,9 @@ const WebBrowserPanel = ({ projectId }) => {
                         <div key="welcome" className="flex-1 bg-[#0B0D11] flex flex-col items-center justify-center p-12 text-center w-full min-h-0 overflow-hidden">
                             <div className="w-24 h-24 bg-[#151821] border border-[#1F2430] rounded-[2rem] flex items-center justify-center mb-8 shadow-2xl relative overflow-hidden group">
                                 <div className="absolute inset-0 bg-[#00E0B8]/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                <img src="/logo.png" className="w-12 h-12 object-contain drop-shadow-[0_0_15px_rgba(0,224,184,0.3)]" alt="Agent K" />
+                                <img src="/logo.png" className="w-12 h-12 object-contain drop-shadow-[0_0_15px_rgba(94,234,212,0.3)]" alt="Mr K Agent" />
                             </div>
-                            <h2 className="text-3xl font-black text-white tracking-tighter uppercase mb-4">Agent K Browser</h2>
+                            <h2 className="text-3xl font-bold text-white tracking-tight mb-4">Mr K Agent Preview</h2>
                             <p className="text-[#57606A] text-[14px] leading-relaxed max-w-sm font-medium mb-10">
                                 This is the integrated high-speed web node. Run your server in the terminal or initialize a module to establish a tunnel.
                             </p>
@@ -488,7 +428,7 @@ const WebBrowserPanel = ({ projectId }) => {
                     Secure Local Tunnel
                 </div>
                 <div className="flex items-center gap-4 text-[9px] font-black uppercase tracking-widest text-[#57606A]">
-                    <span className="opacity-40">Agent K Browser v1.0</span>
+                    <span className="opacity-40">Mr K Agent Preview</span>
                 </div>
             </div>
         </motion.div>

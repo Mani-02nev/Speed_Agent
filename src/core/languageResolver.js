@@ -17,10 +17,25 @@ export function resolveLanguage(fileName) {
             return 'css';
         case 'cpp':
         case 'cc':
+        case 'cxx':
         case 'c':
             return 'cpp';
         case 'rs':
             return 'rust';
+        case 'java':
+            return 'java';
+        case 'go':
+            return 'go';
+        case 'cs':
+            return 'csharp';
+        case 'php':
+            return 'php';
+        case 'rb':
+            return 'ruby';
+        case 'hs':
+            return 'haskell';
+        case 'fs':
+            return 'fsharp';
         default:
             return 'unsupported';
     }
